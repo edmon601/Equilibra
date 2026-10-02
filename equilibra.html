@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Equilibra</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <style>
 :root{
   --verde:#0e8a7b; --verde-esc:#0a6a5e; --verde-claro:#e2f4f1;
@@ -140,6 +142,12 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .bloco{padding:6px 16px 10px}
 .bloco h2{font-size:15px;color:var(--suave);margin:14px 0 8px}
 
+.ic{position:relative}
+.ic.pend::after{content:"";position:absolute;top:8px;right:8px;width:11px;height:11px;border-radius:50%;background:#ffb020;border:2px solid var(--verde)}
+.explica{font-size:14px;color:var(--suave);margin:4px 0 10px}
+.estado{font-weight:700;margin:6px 0 2px}
+.estado.ok{color:var(--recebe)} .estado.falta{color:var(--deve)}
+.ou{text-align:center;color:var(--suave);margin:18px 0 12px;font-size:14px}
 .toast{position:fixed;left:50%;bottom:calc(130px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1b2a28;color:#fff;padding:11px 18px;border-radius:12px;z-index:30;font-size:15px;max-width:90%;text-align:center}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 @media (min-width:520px){body{padding:0}#app{box-shadow:0 0 0 1px var(--linha)}}
@@ -171,7 +179,7 @@ const store = {
   save(d) { mem = d; try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
 };
 let data = store.load();
-const ui = { tab: 'grupos', view: null, busca: '' };
+const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' } };
 let sheetEstado = null;
 let confirmCb = null;
 
@@ -344,7 +352,7 @@ function gerarRecorrentes() {
   }
   if (novos) store.save(data);
 }
-function fim() { if (data) gerarRecorrentes(); render(); }
+function fim() { if (data) gerarRecorrentes(); render(); agendarSync(); }
 
 /* ============================================================
    TELAS
@@ -352,14 +360,21 @@ function fim() { if (data) gerarRecorrentes(); render(); }
 function topo(titulo, op = {}) {
   return `<header class="topo">${op.voltar ? '<button class="ic" data-a="voltar" aria-label="Voltar">‹</button>' : ''}<h1>${esc(titulo)}</h1>${op.acao ? `<button class="ic" data-a="${op.acao}" aria-label="${esc(op.rotulo || 'Mais opções')}">⋯</button>` : ''}</header>`;
 }
-function topoMarca() { return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1></header>`; }
+function topoMarca() {
+  const pend = ui.sync.estado === 'pendente' || ui.sync.estado === 'erro';
+  const sy = data && data.sync ? `<button class="ic ${pend ? 'pend' : ''}" data-a="sync" aria-label="Sincronizar com o Google Drive">⟳</button>` : '';
+  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${sy}</header>`;
+}
 
 function telaBoas() {
   return `<main class="boas"><span class="logo">${LOGO}</span><h1>Equilibra</h1>
   <p>Divida as contas a dois e mantenha tudo em equilíbrio.</p>
   <label class="campo"><span>Seu nome</span><input id="n-a" autocomplete="given-name" maxlength="24"></label>
   <label class="campo"><span>Nome da outra pessoa</span><input id="n-b" maxlength="24"></label>
-  <button class="btn cheio" style="margin:20px 0 0;width:100%" data-a="comecar">Começar</button></main>`;
+  <button class="btn cheio" style="margin:20px 0 0;width:100%" data-a="comecar">Começar</button>
+  <div class="ou">ou</div>
+  <button class="btn-sec cheio" style="margin:0;width:100%" data-a="entrarEspaco">Entrar no espaço da outra pessoa</button>
+  <p class="explica" style="margin-top:10px">Use esta opção no celular da segunda pessoa, depois que a primeira ativar a sincronização.</p></main>`;
 }
 
 function navInferior() {
@@ -489,20 +504,41 @@ function telaAtividade(D) {
   return topo('Atividade') + (html || '<div class="vazio"><b>Nada por aqui ainda</b>Tudo o que vocês registrarem aparece neste histórico.</div>');
 }
 
+function blocoSync() {
+  const s = data.sync;
+  const aviso = CHAVE_API ? '' : '<p class="estado falta">Configuração pendente: falta a chave de API do Google para conectar o arquivo da outra pessoa.</p>';
+  if (!s) {
+    return `<h2>Sincronização com o Google Drive</h2>
+    <p class="explica">Os dois celulares passam a ver os mesmos gastos. Cada pessoa grava só no próprio arquivo, na própria conta do Google.</p>${aviso}
+    <label class="campo"><span>E-mail Google da outra pessoa</span><input id="s-email" type="email" inputmode="email" autocomplete="off" placeholder="nome@gmail.com"></label>
+    <button class="btn" data-a="ativarSync">Ativar sincronização</button>
+    <p class="explica" style="margin-top:10px">A outra pessoa já criou um espaço? Apague os dados deste aparelho (mais abaixo) e escolha “Entrar no espaço da outra pessoa”.</p>`;
+  }
+  const ou = OUT(), ligado = !!s.arquivos[ou];
+  const ult = s.ultima ? quando(s.ultima) : 'ainda não sincronizou';
+  return `<h2>Sincronização com o Google Drive</h2>${aviso}
+    <p class="estado ${ligado ? 'ok' : 'falta'}">${ligado ? 'Conectado com ' + esc(nome(ou)) : 'Falta conectar o arquivo de ' + esc(nome(ou))}</p>
+    <p class="explica">Última sincronização: ${esc(ult)}${ui.sync.msg ? ' · ' + esc(ui.sync.msg) : ''}</p>
+    ${ligado ? '' : `<p class="explica">Peça para ${esc(nome(ou))} ativar a sincronização no celular dela e depois toque no botão abaixo.</p><button class="btn" data-a="conectarOutro">Conectar arquivo de ${esc(nome(ou))}</button>`}
+    <button class="btn-sec" data-a="sync" style="margin-top:10px">Sincronizar agora</button>`;
+}
 function telaConta() {
+  const quemSou = data.sync
+    ? `<p class="explica">Neste aparelho você é <b>${esc(nome(EU()))}</b>.</p>`
+    : `<label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>`;
   return topo('Conta') + `
-  <div class="caixa">Seus dados ficam guardados neste aparelho. A sincronização com o Google Drive entra na próxima etapa.</div>
-  <div class="bloco"><h2>Nomes</h2>
+  <div class="bloco">${blocoSync()}
+    <h2>Nomes</h2>
     <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
     <label class="campo"><span>Nome da outra pessoa</span><input id="c-b" value="${esc(nome(OUT()))}" maxlength="24"></label>
     <button class="btn" data-a="salvarNomes">Salvar nomes</button>
     <h2>Quem está usando este aparelho</h2>
-    <label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>
+    ${quemSou}
     <h2>Dados</h2>
     <button class="opcao" data-a="csv" data-g="">📄 Exportar tudo em CSV</button>
     <button class="opcao" data-a="exportar">💾 Baixar backup (JSON)</button>
     <button class="opcao" data-a="importar">📥 Importar backup (mescla com os dados atuais)</button>
-    <button class="opcao deve" data-a="resetar">🗑️ Apagar todos os dados</button>
+    <button class="opcao deve" data-a="resetar">🗑️ Apagar os dados deste aparelho</button>
   </div>`;
 }
 
@@ -776,14 +812,18 @@ const AC = {
   exportar() { baixar('equilibra-backup.json', JSON.stringify(data), 'application/json'); toast('Backup gerado.'); },
   importar() { $('#arquivo').click(); },
   resetar() {
-    confirmar('Apagar todos os dados deste aparelho? Não dá para desfazer.', 'Apagar tudo', () => { data = null; store.save(null); ui.view = null; ui.tab = 'grupos'; render(); });
+    confirmar('Apagar os dados deste aparelho? Se a sincronização estiver ativa, os arquivos no Drive continuam lá.', 'Apagar', () => { data = null; store.save(null); esquecerToken(); ui.view = null; ui.tab = 'grupos'; render(); });
   },
   salvarNomes() {
     const a = $('#c-a').value.trim(), b = $('#c-b').value.trim();
     if (!a || !b) return toast('Preencha os dois nomes.');
     if (a.toLowerCase() === b.toLowerCase()) return toast('Use nomes diferentes.');
-    data.config.nomes[EU()] = a; data.config.nomes[OUT()] = b; store.save(data); toast('Nomes salvos.'); render();
+    data.config.nomes[EU()] = a; data.config.nomes[OUT()] = b; data.config.nomesTs = Date.now(); store.save(data); toast('Nomes salvos.'); fim();
   },
+  sync() { sincronizar(true); },
+  ativarSync() { ativarSync(); },
+  conectarOutro() { conectarOutro(); },
+  entrarEspaco() { entrarEspaco(); },
   fecharSheet() { fecharSheet(); },
   confirmarOk() { const cb = confirmCb; confirmCb = null; fecharSheet(); if (cb) cb(); }
 };
@@ -814,6 +854,226 @@ document.addEventListener('keydown', e => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && data) fim(); });
 
 /* ============================================================
+   SINCRONIZAÇÃO COM O GOOGLE DRIVE
+   Cada pessoa grava só no próprio arquivo (na própria conta).
+   O app lê o arquivo da outra pessoa e junta os eventos pelo id.
+   Permissão usada: drive.file (só arquivos do Equilibra).
+   ============================================================ */
+const CLIENT_ID = '378125233711-rf1g4qge7f11b9aukdioh89grti23pt4.apps.googleusercontent.com';
+const NUMERO_PROJETO = '378125233711';
+const CHAVE_API = 'AIzaSyAQ9RUG7G5EWz6SkvuONTcEi3fYTn1gwgw'; /* chave de API do Google Picker (restrita ao site) */
+const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
+const TOKEN_KEY = 'equilibra:token';
+const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+let sincronizando = false, syncT = null;
+
+function tokenValido() {
+  try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp > Date.now() + 60000) return t.v; } catch (e) {}
+  return null;
+}
+function guardarToken(v, seg) { try { localStorage.setItem(TOKEN_KEY, JSON.stringify({ v, exp: Date.now() + seg * 1000 })); } catch (e) {} }
+function esquecerToken() { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
+function pedirToken() {
+  return new Promise((res, rej) => {
+    if (!window.google || !google.accounts || !google.accounts.oauth2) { const e = new Error('semConexao'); e.semConexao = true; return rej(e); }
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: ESCOPO,
+      callback: r => {
+        if (r.error) return rej(new Error(r.error));
+        if (!google.accounts.oauth2.hasGrantedAllScopes(r, ESCOPO)) return rej(new Error('Você precisa permitir o acesso aos arquivos do Equilibra no Drive.'));
+        guardarToken(r.access_token, Number(r.expires_in) || 3600); res(r.access_token);
+      },
+      error_callback: e => rej(new Error((e && e.type) || 'popup_failed'))
+    });
+    tc.requestAccessToken();
+  });
+}
+async function obterToken(interativo) {
+  const t = tokenValido(); if (t) return t;
+  if (!interativo) { const e = new Error('semToken'); e.semToken = true; throw e; }
+  return pedirToken();
+}
+async function api(url, opts, tk) {
+  opts = opts || {};
+  const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
+  if (!r.ok) {
+    let c = ''; try { c = await r.text(); } catch (e) {}
+    const e = new Error('HTTP ' + r.status); e.status = r.status; e.corpo = c;
+    if (r.status === 401) esquecerToken();
+    throw e;
+  }
+  return r;
+}
+async function lerArquivo(tk, id) { return (await api(`${DRIVE}/${id}?alt=media`, {}, tk)).json(); }
+async function metaArquivo(tk, id) { return (await api(`${DRIVE}/${id}?fields=id,name,owners(emailAddress,displayName)`, {}, tk)).json(); }
+async function criarArquivo(tk, nomeArq, conteudo) {
+  const b = 'eqb' + uid();
+  const corpo = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nomeArq, mimeType: 'application/json' })}\r\n--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${conteudo}\r\n--${b}--`;
+  const r = await api(`${UPLOAD}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: corpo }, tk);
+  return (await r.json()).id;
+}
+async function gravarArquivo(tk, id, conteudo) {
+  await api(`${UPLOAD}/${id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: conteudo }, tk);
+}
+async function compartilhar(tk, id, email) {
+  await api(`${DRIVE}/${id}/permissions?sendNotificationEmail=false`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }) }, tk);
+}
+function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h) + ':' + s.length; }
+function montarMeu() {
+  const base = { v: 2, espaco: data.sync.espaco, autor: EU(), config: { nomes: data.config.nomes, ts: data.config.nomesTs || 0 }, eventos: data.eventos.filter(e => e.autor === EU()) };
+  const txt = JSON.stringify(base);
+  return { hash: hash(txt), full: JSON.stringify({ ...base, atualizado: Date.now() }) };
+}
+function mesclarDoOutro(arq) {
+  let n = 0; const ids = new Set(data.eventos.map(e => e.id)), out = OUT();
+  for (const e of (arq.eventos || [])) {
+    if (e && e.id && e.tipo && e.autor === out && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
+  }
+  const c = arq.config;
+  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (data.config.nomesTs || 0)) {
+    data.config.nomes = { a: c.nomes.a, b: c.nomes.b }; data.config.nomesTs = c.ts;
+  }
+  return n;
+}
+async function garantirMeuArquivo(tk) {
+  const s = data.sync, eu = EU();
+  if (!s.arquivos[eu]) {
+    s.arquivos[eu] = await criarArquivo(tk, `Equilibra - ${nome(eu)}.json`, montarMeu().full);
+    store.save(data);
+  }
+  if (s.emailOutro && !s.compartilhado) {
+    await compartilhar(tk, s.arquivos[eu], s.emailOutro);
+    s.compartilhado = true; store.save(data);
+  }
+}
+function setSync(estado, msg) { ui.sync = { estado, msg: msg || '' }; }
+function renderSeguro() {
+  const a = document.activeElement;
+  if (a && a.closest && a.closest('#app') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  render();
+}
+function msgErro(e) {
+  const m = String((e && e.message) || e);
+  if (m === 'cancelado') return '';
+  if (e && e.semChave) return 'Falta configurar a chave de API do Google (veja as instruções).';
+  if (e && e.semConexao) return 'Sem conexão com o Google. Verifique a internet.';
+  if (m === 'sem-acesso-outro') return `Sem acesso ao arquivo de ${nome(OUT())}. Conecte o arquivo de novo.`;
+  if (m === 'espaco-diferente') return 'Esse arquivo pertence a outro espaço do Equilibra.';
+  if (e && e.status === 401) return 'A sessão do Google expirou. Toque em ⟳ para entrar de novo.';
+  if (e && e.status === 400 && /shar/i.test(e.corpo || '')) return 'Não foi possível compartilhar com esse e-mail. Confira se é uma conta Google.';
+  if (e && e.status === 403) return 'O Google negou o acesso. Confira se o e-mail está na lista de usuários de teste.';
+  if (/popup_closed|popup_failed|access_denied/.test(m)) return 'O login do Google foi cancelado ou bloqueado.';
+  if (/Failed to fetch|NetworkError/.test(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
+  return m;
+}
+function agendarSync() {
+  if (!data || !data.sync) return;
+  clearTimeout(syncT); syncT = setTimeout(() => sincronizar(false), 2500);
+}
+async function sincronizar(interativo) {
+  if (!data || !data.sync || sincronizando) return;
+  sincronizando = true; setSync('sinc', 'sincronizando…');
+  let novos = 0;
+  try {
+    const tk = await obterToken(interativo);
+    await garantirMeuArquivo(tk);
+    const outroId = data.sync.arquivos[OUT()];
+    if (outroId) {
+      let arq;
+      try { arq = await lerArquivo(tk, outroId); }
+      catch (e) { if (e.status === 404 || e.status === 403) throw new Error('sem-acesso-outro'); throw e; }
+      if (arq.espaco !== data.sync.espaco) throw new Error('espaco-diferente');
+      novos = mesclarDoOutro(arq);
+    }
+    const m = montarMeu();
+    if (m.hash !== data.sync.enviado) { await gravarArquivo(tk, data.sync.arquivos[EU()], m.full); data.sync.enviado = m.hash; }
+    data.sync.ultima = Date.now(); store.save(data);
+    setSync('ok', outroId ? '' : `falta conectar o arquivo de ${nome(OUT())}`);
+    if (novos && interativo) toast(`${novos} novidade${novos > 1 ? 's' : ''} de ${nome(OUT())}.`);
+    else if (interativo) toast('Tudo sincronizado.');
+  } catch (e) {
+    if (e.semToken) setSync('pendente', 'toque em ⟳ para sincronizar');
+    else { const t = msgErro(e); setSync('erro', t); if (interativo && t) toast(t); }
+  } finally {
+    sincronizando = false;
+    if (novos || ui.tab === 'conta' || ui.sync.estado !== 'ok') renderSeguro();
+  }
+}
+function abrirPicker(tk) {
+  return new Promise((res, rej) => {
+    if (!CHAVE_API) { const e = new Error('semChave'); e.semChave = true; return rej(e); }
+    const montar = () => {
+      const v = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setOwnedByMe(false).setIncludeFolders(false);
+      new google.picker.PickerBuilder().addView(v).setOAuthToken(tk).setDeveloperKey(CHAVE_API).setAppId(NUMERO_PROJETO)
+        .setLocale('pt-BR').setTitle('Escolha o arquivo do Equilibra da outra pessoa')
+        .setCallback(d => {
+          if (d.action === google.picker.Action.PICKED) res(d.docs[0].id);
+          else if (d.action === google.picker.Action.CANCEL) rej(new Error('cancelado'));
+        }).build().setVisible(true);
+    };
+    if (window.google && google.picker) return montar();
+    if (!window.gapi) { const e = new Error('semConexao'); e.semConexao = true; return rej(e); }
+    gapi.load('picker', { callback: montar });
+  });
+}
+function falhou(e) { const t = msgErro(e); if (t) toast(t); }
+
+function ativarSync() {
+  const email = (($('#s-email') || {}).value || '').trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Informe o e-mail Google da outra pessoa.');
+  if (data.eventos.some(e => e.autor !== EU())) {
+    return confirmar(`Há registros feitos no modo de teste como ${nome(OUT())}. Eles serão enviados como seus. Continuar?`, 'Continuar', () => executarAtivacao(email));
+  }
+  executarAtivacao(email);
+}
+async function executarAtivacao(email) {
+  try {
+    const tk = await obterToken(true);
+    data.eventos.forEach(e => { if (e.autor !== EU()) e.autor = EU(); });
+    data.v = 2;
+    data.sync = { espaco: uid(), arquivos: { a: null, b: null }, emailOutro: email, compartilhado: false, ultima: 0, enviado: '' };
+    store.save(data);
+    await garantirMeuArquivo(tk);
+    toast(`Pronto. Seu arquivo foi compartilhado com ${email}.`);
+    await sincronizar(false);
+  } catch (e) { falhou(e); setSync('erro', msgErro(e)); }
+  render();
+}
+async function conectarOutro() {
+  try {
+    const tk = await obterToken(true);
+    const id = await abrirPicker(tk);
+    const arq = await lerArquivo(tk, id);
+    if (!arq || arq.espaco !== data.sync.espaco) throw new Error('espaco-diferente');
+    if (arq.autor !== OUT()) throw new Error('Esse é o seu próprio arquivo. Escolha o da outra pessoa.');
+    data.sync.arquivos[OUT()] = id; store.save(data);
+    await sincronizar(true);
+  } catch (e) { falhou(e); }
+  render();
+}
+async function entrarEspaco() {
+  try {
+    const tk = await obterToken(true);
+    const id = await abrirPicker(tk);
+    const arq = await lerArquivo(tk, id);
+    if (!arq || arq.v !== 2 || !arq.espaco || !arq.config || !arq.config.nomes || (arq.autor !== 'a' && arq.autor !== 'b')) throw new Error('Esse não parece ser um arquivo do Equilibra.');
+    const meta = await metaArquivo(tk, id);
+    const email = (((meta.owners || [])[0]) || {}).emailAddress || '';
+    const outra = arq.autor, eu = outra === 'a' ? 'b' : 'a';
+    data = { v: 2, config: { nomes: arq.config.nomes, nomesTs: arq.config.ts || 0, eu }, eventos: [], sync: { espaco: arq.espaco, arquivos: { a: null, b: null }, emailOutro: email, compartilhado: false, ultima: 0, enviado: '' } };
+    data.sync.arquivos[outra] = id;
+    mesclarDoOutro(arq);
+    store.save(data);
+    ui.tab = 'grupos'; ui.view = null;
+    await garantirMeuArquivo(tk);
+    toast(`Você entrou no espaço de ${nome(outra)}. Avise para ${nome(outra)} conectar o seu arquivo.`);
+    await sincronizar(false);
+  } catch (e) { falhou(e); }
+  render();
+}
+
+/* ============================================================
    RENDER
    ============================================================ */
 function render() {
@@ -836,6 +1096,7 @@ function render() {
 
 if (data) gerarRecorrentes();
 render();
+if (data && data.sync) agendarSync();
 })();
 </script>
 </body>
