@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e8a7b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Equilibra</title>
+<style>
+:root{
+  --verde:#0e8a7b; --verde-esc:#0a6a5e; --verde-claro:#e2f4f1;
+  --tinta:#1b2a28; --suave:#5d716d; --linha:#e1e9e7; --fundo:#eef3f2; --papel:#fff;
+  --deve:#c9481a; --deve-bg:#fdece4; --recebe:#1a7f45; --recebe-bg:#e5f5ec;
+}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;color:var(--tinta);background:var(--fundo)}
+body.trava{overflow:hidden}
+#app{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--papel);position:relative;padding-bottom:calc(132px + env(safe-area-inset-bottom))}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;text-align:inherit}
+:focus-visible{outline:3px solid #f5b400;outline-offset:2px}
+
+/* topo */
+.topo{background:var(--verde);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 8px 12px 16px;display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:5;min-height:56px}
+.topo h1{font-size:19px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topo.marca{padding-left:16px}
+.topo .logo{display:inline-flex;color:#fff}
+.ic{width:44px;height:44px;border-radius:50%;color:#fff;font-size:26px;line-height:1;display:grid;place-items:center;text-align:center}
+.ic:active{background:rgba(255,255,255,.18)}
+
+/* saldo */
+.banner{margin:16px;padding:18px;border-radius:16px}
+.banner.recebe{background:var(--recebe-bg);color:var(--recebe)}
+.banner.deve{background:var(--deve-bg);color:var(--deve)}
+.banner.quite{background:var(--verde-claro);color:var(--verde-esc)}
+.banner .rotulo{font-size:14px;opacity:.85}
+.banner .grande{font-size:22px;font-weight:700;margin:2px 0 0;line-height:1.25}
+.banner .btn{margin-top:14px}
+.sec{font-size:15px;font-weight:700;color:var(--suave);padding:8px 16px 4px}
+
+/* botões */
+.btn{background:var(--verde);color:#fff;border-radius:12px;padding:12px 18px;font-weight:700;min-height:46px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+.btn:active{background:var(--verde-esc)}
+.btn-sec{border:2px solid var(--verde);color:var(--verde-esc);border-radius:12px;padding:10px 16px;font-weight:700;min-height:46px;display:inline-flex;align-items:center;justify-content:center;text-align:center;background:#fff}
+.btn.perigo{background:var(--deve)}
+.btn-txt{color:var(--deve);font-weight:700;padding:12px;min-height:44px}
+.cheio{display:flex;width:calc(100% - 32px);margin:14px 16px}
+.acoes{display:flex;gap:10px;margin-top:18px}
+.acoes>*{flex:1}
+.fab{position:fixed;bottom:calc(76px + env(safe-area-inset-bottom));right:max(16px,calc(50% - 224px));background:var(--verde);color:#fff;border-radius:999px;padding:14px 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,106,94,.35);z-index:6;min-height:50px}
+.fab.sozinho{bottom:calc(24px + env(safe-area-inset-bottom))}
+.fab:active{background:var(--verde-esc)}
+
+/* listas */
+.linha{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border-bottom:1px solid var(--linha);min-height:64px}
+.linha:active{background:var(--fundo)}
+.linha .ico{width:42px;height:42px;border-radius:12px;background:var(--verde-claro);display:grid;place-items:center;font-size:21px;flex:none}
+.linha .mid{flex:1;min-width:0}
+.linha .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linha .s{font-size:14px;color:var(--suave)}
+.linha .dir{text-align:right;flex:none}
+.linha .dir small{display:block;font-size:12px}
+.linha .dir b{font-size:16px}
+.recebe{color:var(--recebe)} .deve{color:var(--deve)} .quite{color:var(--suave)}
+.linha .dt{width:34px;text-align:center;flex:none;line-height:1.1}
+.linha .dt b{display:block;font-size:17px}
+.linha .dt span{font-size:12px;color:var(--suave)}
+.linha.pag{background:#f7faf9}
+.linha.pag .ico{background:#e8efed}
+.mes{padding:14px 16px 6px;font-size:14px;font-weight:700;color:var(--suave);text-transform:capitalize;background:var(--fundo)}
+.vazio{padding:36px 24px;text-align:center;color:var(--suave)}
+.vazio b{display:block;color:var(--tinta);font-size:17px;margin-bottom:4px}
+
+/* grupo */
+.faixa{display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto}
+.faixa button{flex:none;border:1.5px solid var(--linha);border-radius:999px;padding:9px 16px;font-weight:600;font-size:14px;min-height:42px;background:#fff}
+.busca{padding:0 16px 12px}
+.busca input{width:100%;border:1.5px solid var(--linha);border-radius:12px;padding:11px 14px;background:#fff}
+
+/* detalhe */
+.cartao{margin:16px;padding:18px;border:1.5px solid var(--linha);border-radius:16px}
+.cartao .ico{width:52px;height:52px;border-radius:14px;background:var(--verde-claro);display:grid;place-items:center;font-size:26px;margin-bottom:10px}
+.cartao h2{font-size:21px;line-height:1.25}
+.cartao .valor{font-size:30px;font-weight:800;margin:2px 0 6px}
+.cartao .meta{font-size:14px;color:var(--suave)}
+.pessoa{display:flex;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--linha)}
+.pessoa span:last-child{text-align:right;color:var(--suave);font-size:14px}
+.selo{display:inline-block;background:var(--verde-claro);color:var(--verde-esc);border-radius:8px;padding:3px 9px;font-size:13px;font-weight:600;margin-top:8px}
+.coment{padding:10px 16px;border-bottom:1px solid var(--linha)}
+.coment small{color:var(--suave)}
+.escrever{display:flex;gap:8px;padding:12px 16px}
+.escrever input{flex:1;min-width:0;border:1.5px solid var(--linha);border-radius:12px;padding:11px 14px}
+
+/* atividade */
+.ativ{padding:12px 16px;border-bottom:1px solid var(--linha)}
+.ativ p{line-height:1.35}
+.ativ small{color:var(--suave);display:block;margin-top:2px}
+
+/* formulários */
+.sheet-wrap{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet-bg{position:absolute;inset:0;background:rgba(18,38,34,.5)}
+.sheet{position:relative;width:100%;max-width:480px;max-height:92vh;max-height:92dvh;overflow:auto;background:#fff;border-radius:22px 22px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));animation:sobe .22s ease-out}
+@keyframes sobe{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
+.sheet h2{font-size:20px;margin-bottom:14px}
+.campo{display:block;margin-bottom:14px}
+.campo>span,.campo>label{display:block;font-size:14px;font-weight:600;color:var(--suave);margin-bottom:5px}
+.campo input,.campo select,.campo textarea{width:100%;border:1.5px solid var(--linha);border-radius:12px;padding:12px 14px;background:#fff;min-height:48px}
+.dupla{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.moeda{display:flex;align-items:center;border:1.5px solid var(--linha);border-radius:12px;padding-left:14px;background:#fff}
+.moeda b{color:var(--suave);font-weight:600}
+.moeda input{border:0!important;min-width:0;flex:1;padding-left:8px!important}
+.chk{display:flex;align-items:center;gap:10px;padding:10px 0;min-height:44px}
+.chk input{width:22px;height:22px;accent-color:var(--verde)}
+.dica{font-size:14px;color:var(--suave);margin:-4px 0 14px;min-height:20px}
+.erro{background:var(--deve-bg);color:#8f3210;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.opcao{display:flex;width:100%;align-items:center;gap:12px;padding:14px 4px;border-bottom:1px solid var(--linha);font-weight:600;min-height:52px}
+.barra{margin:0 0 12px}
+.barra div{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:4px}
+.barra i{display:block;height:9px;border-radius:5px;background:var(--verde)}
+.barra.b i{background:#7cc6bc}
+.sub{font-size:15px;font-weight:700;margin:18px 0 10px}
+
+/* navegação */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;border-top:1px solid var(--linha);display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:env(safe-area-inset-bottom);z-index:7}
+.nav button{padding:8px 4px 9px;text-align:center;font-size:12px;font-weight:600;color:var(--suave);min-height:60px}
+.nav button span{display:block;font-size:22px;line-height:1.2}
+.nav button.on{color:var(--verde-esc)}
+
+/* boas-vindas */
+.boas{padding:calc(56px + env(safe-area-inset-top)) 24px 32px}
+.boas .logo{color:var(--verde);display:inline-flex;margin-bottom:12px}
+.boas h1{font-size:34px;letter-spacing:-.5px}
+.boas p{color:var(--suave);margin:8px 0 28px;font-size:17px}
+
+/* conta */
+.caixa{margin:16px;padding:14px 16px;border-radius:14px;background:var(--verde-claro);color:var(--verde-esc);font-size:15px}
+.bloco{padding:6px 16px 10px}
+.bloco h2{font-size:15px;color:var(--suave);margin:14px 0 8px}
+
+.toast{position:fixed;left:50%;bottom:calc(130px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1b2a28;color:#fff;padding:11px 18px;border-radius:12px;z-index:30;font-size:15px;max-width:90%;text-align:center}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+@media (min-width:520px){body{padding:0}#app{box-shadow:0 0 0 1px var(--linha)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="sheet" class="sheet-wrap" hidden>
+  <div class="sheet-bg" data-a="fecharSheet"></div>
+  <div class="sheet" role="dialog" aria-modal="true" id="sheetBody"></div>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+<input type="file" id="arquivo" accept="application/json,.json" hidden>
+<noscript>O Equilibra precisa de JavaScript para funcionar.</noscript>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================
+   ARMAZENAMENTO
+   Hoje: neste aparelho. A estrutura (lista de eventos) já está
+   pronta para a etapa 2 (um arquivo por pessoa no Google Drive).
+   ============================================================ */
+const KEY = 'equilibra:v1';
+let mem = null;
+const store = {
+  load() { try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch (e) {} return mem; },
+  save(d) { mem = d; try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
+};
+let data = store.load();
+const ui = { tab: 'grupos', view: null, busca: '' };
+let sheetEstado = null;
+let confirmCb = null;
+
+/* ============================================================
+   UTILITÁRIOS
+   ============================================================ */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const R = c => brl.format(c / 100);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const hoje = () => ymd(new Date());
+const dataLonga = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const diaMes = iso => { const d = new Date(iso + 'T12:00:00'); return { d: String(d.getDate()).padStart(2, '0'), m: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') }; };
+const rotuloMes = k => new Date(k + '-15T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+const quando = ts => new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmtIn = c => (c / 100).toFixed(2).replace('.', ',');
+const rolar = () => window.scrollTo(0, 0);
+
+function parseValor(s) {
+  s = String(s || '').trim().replace(/[R$\s]/g, '');
+  if (!s) return NaN;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return isFinite(n) ? Math.round(n * 100) : NaN;
+}
+function addMeses(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = new Date(y, m - 1 + n, 1);
+  const ult = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d, ult));
+  return ymd(t);
+}
+function addDias(iso, n) { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() + n); return ymd(t); }
+
+let toastT;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+const LOGO = '<svg viewBox="0 0 48 48" width="30" height="30" aria-hidden="true"><circle cx="10" cy="15" r="6" fill="currentColor"/><circle cx="38" cy="15" r="6" fill="currentColor"/><rect x="4" y="21" width="40" height="4" rx="2" fill="currentColor"/><path d="M24 25 L16 42 H32 Z" fill="currentColor"/></svg>';
+
+const CATS = [
+  { id: 'mercado', r: 'Mercado', e: '🛒' },
+  { id: 'restaurante', r: 'Restaurantes e bares', e: '🍽️' },
+  { id: 'moradia', r: 'Aluguel e moradia', e: '🏠' },
+  { id: 'contas', r: 'Contas (luz, água, internet)', e: '💡' },
+  { id: 'transporte', r: 'Transporte', e: '🚗' },
+  { id: 'lazer', r: 'Lazer', e: '🎬' },
+  { id: 'viagem', r: 'Viagem', e: '✈️' },
+  { id: 'saude', r: 'Saúde', e: '💊' },
+  { id: 'compras', r: 'Compras', e: '🛍️' },
+  { id: 'presente', r: 'Presentes', e: '🎁' },
+  { id: 'pet', r: 'Pets', e: '🐾' },
+  { id: 'geral', r: 'Geral', e: '🧾' }
+];
+const cat = id => CATS.find(c => c.id === id) || CATS[CATS.length - 1];
+const ICONES_GRUPO = [['🏠', 'Casa'], ['✈️', 'Viagem'], ['❤️', 'Casal'], ['🛒', 'Compras'], ['📌', 'Outro']];
+const FORMAS = ['Pix', 'Dinheiro', 'Transferência', 'Outro'];
+
+const EU = () => data.config.eu;
+const OUT = () => (EU() === 'a' ? 'b' : 'a');
+const nome = p => data.config.nomes[p];
+const quem = p => (p === EU() ? 'Você' : nome(p));
+
+/* ============================================================
+   EVENTOS  ->  ESTADO
+   Nada é sobrescrito: editar/apagar = novo evento.
+   ============================================================ */
+function addEvento(e) {
+  e.id = e.id || uid();
+  e.ts = e.ts || Date.now();
+  e.autor = e.autor || EU();
+  data.eventos.push(e);
+  store.save(data);
+}
+function derivar() {
+  const evs = [...data.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
+  const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
+  const desp = new Map(), pag = new Map(), coms = [];
+  for (const e of evs) {
+    switch (e.tipo) {
+      case 'grupo': grupos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
+      case 'grupo_edit': if (grupos.has(e.alvo)) Object.assign(grupos.get(e.alvo), e.dados); break;
+      case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) g.apagado = true; break; }
+      case 'despesa': desp.set(e.id, { id: e.id, ...e.dados, autor: e.autor, ts: e.ts }); break;
+      case 'despesa_edit': if (desp.has(e.alvo)) Object.assign(desp.get(e.alvo), e.dados, { editado: true }); break;
+      case 'despesa_del': if (desp.has(e.alvo)) desp.get(e.alvo).apagada = true; break;
+      case 'pagamento': pag.set(e.id, { id: e.id, ...e.dados, autor: e.autor, ts: e.ts }); break;
+      case 'pagamento_del': if (pag.has(e.alvo)) pag.get(e.alvo).apagado = true; break;
+      case 'comentario': coms.push({ id: e.id, alvo: e.alvo, texto: e.dados.texto, autor: e.autor, ts: e.ts }); break;
+    }
+  }
+  return { evs, grupos, desp, pag, coms };
+}
+function saldoGrupo(D, gid) {
+  const b = { a: 0, b: 0 };
+  for (const d of D.desp.values()) {
+    if (d.apagada || d.grupo !== gid) continue;
+    b.a += d.pagou.a - d.devido.a; b.b += d.pagou.b - d.devido.b;
+  }
+  for (const p of D.pag.values()) {
+    if (p.apagado || p.grupo !== gid) continue;
+    b[p.de] += p.valor; b[p.para] -= p.valor;
+  }
+  return b;
+}
+function gruposAtivos(D) {
+  return [...D.grupos.values()].filter(g => !g.apagado).sort((x, y) => (y.padrao ? 1 : 0) - (x.padrao ? 1 : 0) || y.ts - x.ts);
+}
+function fraseSaldo(c) {
+  if (c > 0) return { cls: 'recebe', t: `${nome(OUT())} deve ${R(c)} a você`, curto: `${nome(OUT())} deve ${R(c)}` };
+  if (c < 0) return { cls: 'deve', t: `Você deve ${R(-c)} a ${nome(OUT())}`, curto: `você deve ${R(-c)}` };
+  return { cls: 'quite', t: 'Tudo certo entre vocês', curto: 'tudo certo' };
+}
+
+/* ============================================================
+   DIVISÃO (valores em centavos, sem erro de arredondamento)
+   ============================================================ */
+function calcDevido(tipo, total, ent, id) {
+  if (tipo === 'igual') {
+    const q = ent.quem || [];
+    if (!q.length) return { erro: 'Escolha pelo menos uma pessoa para dividir.' };
+    if (q.length === 1) return { ok: { a: q[0] === 'a' ? total : 0, b: q[0] === 'b' ? total : 0 } };
+    const par = [...String(id)].reduce((s, c) => s + c.charCodeAt(0), 0) % 2;
+    const metade = Math.floor(total / 2), sobra = total - metade * 2;
+    return { ok: { a: metade + (par === 0 ? sobra : 0), b: metade + (par === 1 ? sobra : 0) } };
+  }
+  if (tipo === 'exato') {
+    if (ent.a + ent.b !== total) return { erro: `Os valores somam ${R(ent.a + ent.b)}, mas a despesa é de ${R(total)}.` };
+    return { ok: { a: ent.a, b: ent.b } };
+  }
+  if (tipo === 'percent') {
+    if (Math.abs(ent.a + ent.b - 100) > 0.001) return { erro: `As porcentagens somam ${ent.a + ent.b}%. Precisam somar 100%.` };
+    const a = Math.round(total * ent.a / 100);
+    return { ok: { a, b: total - a } };
+  }
+  if (tipo === 'partes') {
+    if (ent.a < 0 || ent.b < 0 || ent.a + ent.b <= 0) return { erro: 'Informe as partes de cada um.' };
+    const a = Math.round(total * ent.a / (ent.a + ent.b));
+    return { ok: { a, b: total - a } };
+  }
+  return { erro: 'Tipo de divisão inválido.' };
+}
+
+/* ============================================================
+   DESPESAS RECORRENTES
+   Ids determinísticos (id@data): se os dois celulares gerarem,
+   a mesclagem não duplica.
+   ============================================================ */
+const CAMPOS = ['grupo', 'desc', 'valor', 'cat', 'pagouModo', 'pagou', 'tipo', 'ent', 'devido', 'nota'];
+function gerarRecorrentes() {
+  const D = derivar();
+  const ids = new Set(data.eventos.map(e => e.id));
+  const h = hoje(); let novos = 0;
+  for (const d of D.desp.values()) {
+    if (d.apagada || !d.rec || d.origem) continue;
+    for (let i = 1; i < 600; i++) {
+      const dt = d.rec === 'mensal' ? addMeses(d.data, i) : addDias(d.data, 7 * i);
+      if (dt > h) break;
+      const id = d.id + '@' + dt;
+      if (ids.has(id)) continue;
+      const dados = { data: dt, rec: null, origem: d.id };
+      CAMPOS.forEach(k => { dados[k] = d[k]; });
+      data.eventos.push({ id, tipo: 'despesa', autor: d.autor, ts: new Date(dt + 'T12:00:00').getTime(), dados });
+      ids.add(id); novos++;
+    }
+  }
+  if (novos) store.save(data);
+}
+function fim() { if (data) gerarRecorrentes(); render(); }
+
+/* ============================================================
+   TELAS
+   ============================================================ */
+function topo(titulo, op = {}) {
+  return `<header class="topo">${op.voltar ? '<button class="ic" data-a="voltar" aria-label="Voltar">‹</button>' : ''}<h1>${esc(titulo)}</h1>${op.acao ? `<button class="ic" data-a="${op.acao}" aria-label="${esc(op.rotulo || 'Mais opções')}">⋯</button>` : ''}</header>`;
+}
+function topoMarca() { return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1></header>`; }
+
+function telaBoas() {
+  return `<main class="boas"><span class="logo">${LOGO}</span><h1>Equilibra</h1>
+  <p>Divida as contas a dois e mantenha tudo em equilíbrio.</p>
+  <label class="campo"><span>Seu nome</span><input id="n-a" autocomplete="given-name" maxlength="24"></label>
+  <label class="campo"><span>Nome da outra pessoa</span><input id="n-b" maxlength="24"></label>
+  <button class="btn cheio" style="margin:20px 0 0;width:100%" data-a="comecar">Começar</button></main>`;
+}
+
+function navInferior() {
+  const it = (t, ic, r) => `<button data-a="tab" data-t="${t}" class="${ui.tab === t ? 'on' : ''}" ${ui.tab === t ? 'aria-current="page"' : ''}><span aria-hidden="true">${ic}</span>${r}</button>`;
+  return `<nav class="nav" aria-label="Principal">${it('grupos', '👥', 'Grupos')}${it('atividade', '📋', 'Atividade')}${it('conta', '👤', 'Conta')}</nav>`;
+}
+
+function telaGrupos(D) {
+  let total = 0;
+  const linhas = gruposAtivos(D).map(g => {
+    const s = saldoGrupo(D, g.id)[EU()]; total += s;
+    const f = fraseSaldo(s);
+    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${esc(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span><span class="s ${f.cls}">${esc(f.curto)}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
+  }).join('');
+  const f = fraseSaldo(total);
+  return topoMarca() +
+    `<section class="banner ${f.cls}"><p class="rotulo">Saldo geral</p><p class="grande">${esc(f.t)}</p>${total ? '<button class="btn" data-a="acertar">Acertar contas</button>' : ''}</section>
+    <h2 class="sec">Grupos</h2>${linhas}
+    <button class="btn-sec cheio" data-a="novoGrupo">Criar grupo</button>`;
+}
+
+function pagouTexto(d) {
+  const pa = d.pagou.a > 0, pb = d.pagou.b > 0;
+  if (pa && pb) return 'Pago pelos dois';
+  const p = pa ? 'a' : 'b';
+  return `${quem(p)} pagou ${R(d.valor)}`;
+}
+function linhaDespesa(d) {
+  const c = cat(d.cat), dm = diaMes(d.data);
+  const net = d.pagou[EU()] - d.devido[EU()];
+  let dir;
+  if (net > 0) dir = `<span class="dir recebe"><small>você emprestou</small><b>${R(net)}</b></span>`;
+  else if (net < 0) dir = `<span class="dir deve"><small>você deve</small><b>${R(-net)}</b></span>`;
+  else dir = '<span class="dir quite"><small>sem saldo</small></span>';
+  return `<button class="linha" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}</span></span>${dir}</button>`;
+}
+function textoPag(p) {
+  if (p.de === EU()) return `Você pagou ${nome(p.para)}`;
+  if (p.para === EU()) return `${nome(p.de)} pagou você`;
+  return `${nome(p.de)} pagou ${nome(p.para)}`;
+}
+function linhaPag(p) {
+  const dm = diaMes(p.data);
+  return `<button class="linha pag" data-a="abrirPagamento" data-id="${esc(p.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">💸</span><span class="mid"><span class="t">${esc(textoPag(p))}</span><span class="s">${esc(p.forma || 'Pagamento')}</span></span><span class="dir quite"><b>${R(p.valor)}</b></span></button>`;
+}
+function listaGrupo(D, gid, q) {
+  q = (q || '').trim().toLowerCase();
+  let itens = [
+    ...[...D.desp.values()].filter(d => !d.apagada && d.grupo === gid).map(d => ({ k: 'd', x: d })),
+    ...[...D.pag.values()].filter(p => !p.apagado && p.grupo === gid).map(p => ({ k: 'p', x: p }))
+  ];
+  if (q) {
+    itens = itens.filter(({ k, x }) => {
+      const txt = k === 'd'
+        ? `${x.desc} ${cat(x.cat).r} ${fmtIn(x.valor)} ${x.nota || ''} ${quem(x.autor)}`
+        : `${textoPag(x)} ${x.forma || ''} ${fmtIn(x.valor)}`;
+      return txt.toLowerCase().includes(q);
+    });
+  }
+  if (!itens.length) {
+    return q ? '<div class="vazio"><b>Nada encontrado</b>Tente outro termo de busca.</div>'
+      : '<div class="vazio"><b>Nenhuma despesa ainda</b>Toque em “Adicionar despesa” para registrar a primeira.</div>';
+  }
+  itens.sort((m, n) => n.x.data.localeCompare(m.x.data) || n.x.ts - m.x.ts);
+  let out = '', mesAtual = '';
+  for (const { k, x } of itens) {
+    const mk = x.data.slice(0, 7);
+    if (mk !== mesAtual) { mesAtual = mk; out += `<div class="mes">${esc(rotuloMes(mk))}</div>`; }
+    out += k === 'd' ? linhaDespesa(x) : linhaPag(x);
+  }
+  return out;
+}
+function telaGrupo(D, id) {
+  const g = D.grupos.get(id);
+  const f = fraseSaldo(saldoGrupo(D, id)[EU()]);
+  return topo(g.nome, { voltar: true, acao: 'menuGrupo', rotulo: 'Opções do grupo' }) +
+    `<section class="banner ${f.cls}"><p class="grande">${esc(f.t)}</p></section>
+    <div class="faixa"><button data-a="acertar" data-g="${esc(id)}">Acertar contas</button><button data-a="totais" data-g="${esc(id)}">Totais</button><button data-a="csv" data-g="${esc(id)}">Exportar CSV</button></div>
+    <div class="busca"><input id="busca" type="search" placeholder="Buscar despesas" aria-label="Buscar despesas" value="${esc(ui.busca)}"></div>
+    <div id="lista">${listaGrupo(D, id, ui.busca)}</div>`;
+}
+
+function telaDespesa(D, id) {
+  const d = D.desp.get(id), g = D.grupos.get(d.grupo), c = cat(d.cat);
+  const pessoas = [EU(), OUT()].map(p => {
+    const pg = d.pagou[p], dv = d.devido[p];
+    return `<div class="pessoa"><span>${esc(quem(p))}</span><span>pagou ${R(pg)} · parte ${R(dv)}</span></div>`;
+  }).join('');
+  const coms = D.coms.filter(x => x.alvo === id).map(x => `<div class="coment"><b>${esc(quem(x.autor))}</b> <small>${esc(quando(x.ts))}</small><p>${esc(x.texto)}</p></div>`).join('');
+  const rec = d.rec ? `<span class="selo">Repete ${d.rec === 'mensal' ? 'todo mês' : 'toda semana'}</span>` : (d.origem ? '<span class="selo">Gerada por despesa recorrente</span>' : '');
+  const tipos = { igual: 'Dividida igualmente', exato: 'Valores exatos', percent: 'Por porcentagens', partes: 'Por partes' };
+  return topo('Despesa', { voltar: true }) +
+    `<section class="cartao"><div class="ico" aria-hidden="true">${c.e}</div><h2>${esc(d.desc)}</h2><p class="valor">${R(d.valor)}</p>
+      <p class="meta">${esc(c.r)} · ${esc(dataLonga(d.data))}</p>
+      <p class="meta">Adicionada por ${esc(quem(d.autor))} em ${esc(g ? g.nome : '')}${d.editado ? ' · editada' : ''}</p>
+      <p class="meta">${esc(tipos[d.tipo] || '')}</p>${rec}${d.nota ? `<p style="margin-top:10px">${esc(d.nota)}</p>` : ''}</section>
+    ${pessoas}
+    <div class="acoes" style="padding:0 16px;margin:16px 0"><button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">Apagar</button></div>
+    <h2 class="sec">Comentários</h2>${coms || '<p class="vazio" style="padding:12px">Nenhum comentário.</p>'}
+    <div class="escrever"><input id="coment" placeholder="Escreva um comentário" aria-label="Comentário" maxlength="300"><button class="btn" data-a="comentar" data-id="${esc(id)}">Enviar</button></div>`;
+}
+
+function textoAtividade(e, D) {
+  const A = quem(e.autor);
+  const dd = e.alvo ? D.desp.get(e.alvo) : D.desp.get(e.id);
+  const gn = id => (D.grupos.get(id) || {}).nome || '';
+  switch (e.tipo) {
+    case 'despesa': {
+      const net = e.dados.pagou[EU()] - e.dados.devido[EU()];
+      const sub = net > 0 ? `Você emprestou ${R(net)}` : net < 0 ? `Você deve ${R(-net)}` : 'Sem saldo para você';
+      return { t: `${A} adicionou “${e.dados.desc}” em ${gn(e.dados.grupo)}.`, s: sub, cls: net > 0 ? 'recebe' : net < 0 ? 'deve' : '' };
+    }
+    case 'despesa_edit': return { t: `${A} editou “${dd ? dd.desc : 'uma despesa'}”.` };
+    case 'despesa_del': return { t: `${A} apagou “${dd ? dd.desc : 'uma despesa'}”.` };
+    case 'pagamento': return { t: `${textoPag(e.dados)} ${R(e.dados.valor)}.`, s: e.dados.forma };
+    case 'pagamento_del': return { t: `${A} apagou um pagamento.` };
+    case 'grupo': return { t: `${A} criou o grupo “${e.dados.nome}”.` };
+    case 'grupo_edit': return { t: `${A} editou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
+    case 'grupo_del': return { t: `${A} apagou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
+    case 'comentario': return { t: `${A} comentou em “${dd ? dd.desc : 'uma despesa'}”.`, s: `“${e.dados.texto}”` };
+  }
+  return { t: '' };
+}
+function telaAtividade(D) {
+  const itens = [...D.evs].reverse().slice(0, 150).map(e => ({ e, x: textoAtividade(e, D) })).filter(i => i.x.t);
+  const html = itens.map(({ e, x }) => `<div class="ativ"><p>${esc(x.t)}</p>${x.s ? `<small class="${x.cls || ''}">${esc(x.s)}</small>` : ''}<small>${esc(quando(e.ts))}</small></div>`).join('');
+  return topo('Atividade') + (html || '<div class="vazio"><b>Nada por aqui ainda</b>Tudo o que vocês registrarem aparece neste histórico.</div>');
+}
+
+function telaConta() {
+  return topo('Conta') + `
+  <div class="caixa">Seus dados ficam guardados neste aparelho. A sincronização com o Google Drive entra na próxima etapa.</div>
+  <div class="bloco"><h2>Nomes</h2>
+    <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
+    <label class="campo"><span>Nome da outra pessoa</span><input id="c-b" value="${esc(nome(OUT()))}" maxlength="24"></label>
+    <button class="btn" data-a="salvarNomes">Salvar nomes</button>
+    <h2>Quem está usando este aparelho</h2>
+    <label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>
+    <h2>Dados</h2>
+    <button class="opcao" data-a="csv" data-g="">📄 Exportar tudo em CSV</button>
+    <button class="opcao" data-a="exportar">💾 Baixar backup (JSON)</button>
+    <button class="opcao" data-a="importar">📥 Importar backup (mescla com os dados atuais)</button>
+    <button class="opcao deve" data-a="resetar">🗑️ Apagar todos os dados</button>
+  </div>`;
+}
+
+/* ============================================================
+   FORMULÁRIOS (folhas inferiores)
+   ============================================================ */
+function abrirSheet(html) {
+  $('#sheetBody').innerHTML = html;
+  $('#sheet').hidden = false;
+  document.body.classList.add('trava');
+  const f = $('#sheetBody [autofocus]'); if (f) f.focus();
+}
+function fecharSheet() {
+  $('#sheet').hidden = true;
+  document.body.classList.remove('trava');
+  sheetEstado = null;
+}
+function confirmar(msg, rotulo, cb) {
+  confirmCb = cb;
+  abrirSheet(`<h2>${esc(msg)}</h2><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn perigo" data-a="confirmarOk">${esc(rotulo)}</button></div>`);
+}
+function erroForm(msg) {
+  const el = $('#erro'); if (!el) return;
+  el.textContent = msg; el.hidden = false; el.scrollIntoView({ block: 'nearest' });
+}
+
+/* --- despesa --- */
+function pagoHTML(modo, pagou) {
+  if (modo !== 'ambos') return '';
+  return `<div class="dupla" style="margin-bottom:14px">${[EU(), OUT()].map(p => `<label class="campo" style="margin:0"><span>${esc(quem(p))} pagou</span><span class="moeda"><b>R$</b><input id="f-pago-${p}" inputmode="decimal" placeholder="0,00" value="${pagou && pagou[p] ? fmtIn(pagou[p]) : ''}"></span></label>`).join('')}</div>`;
+}
+function divHTML(tipo, ent) {
+  const ordem = [EU(), OUT()];
+  if (tipo === 'igual') {
+    const q = (ent && ent.quem) || ['a', 'b'];
+    return ordem.map(p => `<label class="chk"><input type="checkbox" id="q-${p}" ${q.includes(p) ? 'checked' : ''}> ${esc(quem(p))}</label>`).join('');
+  }
+  if (tipo === 'exato') {
+    return `<div class="dupla">${ordem.map(p => `<label class="campo" style="margin:0"><span>${esc(quem(p))}</span><span class="moeda"><b>R$</b><input id="s-${p}" inputmode="decimal" placeholder="0,00" value="${ent && ent[p] ? fmtIn(ent[p]) : ''}"></span></label>`).join('')}</div>`;
+  }
+  const padrao = tipo === 'percent' ? 50 : 1, suf = tipo === 'percent' ? '%' : 'partes';
+  return `<div class="dupla">${ordem.map(p => `<label class="campo" style="margin:0"><span>${esc(quem(p))}</span><span class="moeda"><input id="s-${p}" inputmode="decimal" placeholder="${padrao}" value="${ent && ent[p] != null ? ent[p] : padrao}"><b style="padding-right:12px">${suf}</b></span></label>`).join('')}</div>`;
+}
+function formDespesa(d, gid) {
+  const D = derivar(), novo = !d;
+  const v = d || { grupo: gid || 'casal', desc: '', valor: 0, data: hoje(), cat: 'geral', pagouModo: EU(), pagou: null, tipo: 'igual', ent: null, rec: null, nota: '' };
+  sheetEstado = { id: novo ? uid() : d.id, novo };
+  const gs = gruposAtivos(D);
+  return `<h2>${novo ? 'Nova despesa' : 'Editar despesa'}</h2>
+  <div class="erro" id="erro" role="alert" hidden></div>
+  <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc((g.icone || '') + ' ' + g.nome)}</option>`).join('')}</select></label>
+  <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}" ${novo ? 'autofocus' : ''}></label>
+  <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="f-valor" inputmode="decimal" placeholder="0,00" value="${v.valor ? fmtIn(v.valor) : ''}"></span></label>
+  <div class="dupla">
+    <label class="campo"><span>Data</span><input id="f-data" type="date" value="${esc(v.data)}"></label>
+    <label class="campo"><span>Categoria</span><select id="f-cat">${CATS.map(c => `<option value="${c.id}" ${c.id === v.cat ? 'selected' : ''}>${c.e} ${esc(c.r)}</option>`).join('')}</select></label>
+  </div>
+  <label class="campo"><span>Quem pagou</span><select id="f-pagou">
+    <option value="${EU()}" ${v.pagouModo === EU() ? 'selected' : ''}>${esc(quem(EU()))}</option>
+    <option value="${OUT()}" ${v.pagouModo === OUT() ? 'selected' : ''}>${esc(quem(OUT()))}</option>
+    <option value="ambos" ${v.pagouModo === 'ambos' ? 'selected' : ''}>Os dois (valores diferentes)</option></select></label>
+  <div id="pagoCampos">${pagoHTML(v.pagouModo, v.pagou)}</div>
+  <label class="campo"><span>Como dividir</span><select id="f-tipo">
+    <option value="igual" ${v.tipo === 'igual' ? 'selected' : ''}>Igualmente</option>
+    <option value="exato" ${v.tipo === 'exato' ? 'selected' : ''}>Por valores exatos</option>
+    <option value="percent" ${v.tipo === 'percent' ? 'selected' : ''}>Por porcentagens</option>
+    <option value="partes" ${v.tipo === 'partes' ? 'selected' : ''}>Por partes</option></select></label>
+  <div id="divCampos">${divHTML(v.tipo, v.ent)}</div>
+  <p class="dica" id="hint" aria-live="polite"></p>
+  <div class="dupla">
+    <label class="campo"><span>Repetir</span><select id="f-rec"><option value="">Não repetir</option><option value="mensal" ${v.rec === 'mensal' ? 'selected' : ''}>Todo mês</option><option value="semanal" ${v.rec === 'semanal' ? 'selected' : ''}>Toda semana</option></select></label>
+    <label class="campo"><span>Observação</span><input id="f-nota" maxlength="120" value="${esc(v.nota || '')}"></label>
+  </div>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarDespesa">Salvar</button></div>`;
+}
+function lerDivisao(total, id) {
+  const tipo = $('#f-tipo').value; let ent;
+  if (tipo === 'igual') ent = { quem: ['a', 'b'].filter(p => $('#q-' + p) && $('#q-' + p).checked) };
+  else if (tipo === 'exato') ent = { a: parseValor($('#s-a').value) || 0, b: parseValor($('#s-b').value) || 0 };
+  else ent = { a: Number(String($('#s-a').value).replace(',', '.')) || 0, b: Number(String($('#s-b').value).replace(',', '.')) || 0 };
+  const r = calcDevido(tipo, total, ent, id);
+  return { tipo, ent, ...r };
+}
+function atualizarHint() {
+  const h = $('#hint'); if (!h || !$('#f-valor')) return;
+  const total = parseValor($('#f-valor').value);
+  if (!(total > 0)) { h.textContent = ''; return; }
+  const r = lerDivisao(total, sheetEstado ? sheetEstado.id : 'x');
+  h.textContent = r.erro ? r.erro : `Parte de cada um: ${quem(EU())} ${R(r.ok[EU()])} · ${quem(OUT())} ${R(r.ok[OUT()])}`;
+}
+function lerForm(id) {
+  const desc = $('#f-desc').value.trim(), total = parseValor($('#f-valor').value);
+  if (!desc) return { erro: 'Dê uma descrição à despesa.' };
+  if (!(total > 0)) return { erro: 'Informe um valor maior que zero.' };
+  const modo = $('#f-pagou').value; let pagou;
+  if (modo === 'ambos') {
+    const a = parseValor($('#f-pago-a').value) || 0, b = parseValor($('#f-pago-b').value) || 0;
+    if (a + b !== total) return { erro: `Os valores pagos somam ${R(a + b)}, mas a despesa é de ${R(total)}.` };
+    pagou = { a, b };
+  } else pagou = { a: modo === 'a' ? total : 0, b: modo === 'b' ? total : 0 };
+  const r = lerDivisao(total, id);
+  if (r.erro) return { erro: r.erro };
+  return { dados: { grupo: $('#f-grupo').value, desc, valor: total, data: $('#f-data').value || hoje(), cat: $('#f-cat').value, pagouModo: modo, pagou, tipo: r.tipo, ent: r.ent, devido: r.ok, rec: $('#f-rec').value || null, nota: $('#f-nota').value.trim() } };
+}
+
+/* --- pagamento --- */
+function formPagamento(gid) {
+  const D = derivar(), gs = gruposAtivos(D);
+  if (!gid) { const com = gs.find(g => saldoGrupo(D, g.id)[EU()] !== 0); gid = (com || gs[0]).id; }
+  sheetEstado = { pagamento: true };
+  return `<h2>Acertar contas</h2><div class="erro" id="erro" role="alert" hidden></div>
+  <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc((g.icone || '') + ' ' + g.nome)}</option>`).join('')}</select></label>
+  <label class="campo"><span>Quem pagou</span><select id="p-dir"></select></label>
+  <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="p-valor" inputmode="decimal" placeholder="0,00"></span></label>
+  <div class="dupla">
+    <label class="campo"><span>Forma</span><select id="p-forma">${FORMAS.map(f => `<option>${f}</option>`).join('')}</select></label>
+    <label class="campo"><span>Data</span><input id="p-data" type="date" value="${hoje()}"></label>
+  </div>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarPagamento">Registrar</button></div>`;
+}
+function preencherPagamento() {
+  const D = derivar(), gid = $('#p-grupo').value, s = saldoGrupo(D, gid)[EU()];
+  const eu = EU(), ou = OUT();
+  $('#p-dir').innerHTML = `<option value="${eu}>${ou}" ${s <= 0 ? 'selected' : ''}>Você pagou ${esc(nome(ou))}</option><option value="${ou}>${eu}" ${s > 0 ? 'selected' : ''}>${esc(nome(ou))} pagou você</option>`;
+  $('#p-valor').value = s ? fmtIn(Math.abs(s)) : '';
+}
+
+/* --- grupo --- */
+function formGrupo(g) {
+  const novo = !g;
+  sheetEstado = { id: novo ? uid() : g.id, novo };
+  return `<h2>${novo ? 'Novo grupo' : 'Editar grupo'}</h2><div class="erro" id="erro" role="alert" hidden></div>
+  <label class="campo"><span>Nome do grupo</span><input id="g-nome" maxlength="30" value="${esc(g ? g.nome : '')}" ${novo ? 'autofocus' : ''}></label>
+  <label class="campo"><span>Tipo</span><select id="g-icone">${ICONES_GRUPO.map(([e, r]) => `<option value="${e}" ${g && g.icone === e ? 'selected' : ''}>${e} ${r}</option>`).join('')}</select></label>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarGrupo">Salvar</button></div>`;
+}
+
+/* --- totais --- */
+function barras(itens, cls) {
+  const max = Math.max(1, ...itens.map(i => i[1]));
+  return itens.map(([r, v]) => `<div class="barra ${cls || ''}"><div><span>${esc(r)}</span><b>${R(v)}</b></div><i style="width:${Math.max(3, Math.round(v / max * 100))}%"></i></div>`).join('');
+}
+function sheetTotais(D, gid) {
+  const g = D.grupos.get(gid);
+  const ds = [...D.desp.values()].filter(d => !d.apagada && d.grupo === gid);
+  if (!ds.length) return `<h2>Totais de ${esc(g.nome)}</h2><div class="vazio"><b>Sem despesas</b>Registre despesas para ver os totais.</div><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`;
+  const total = ds.reduce((s, d) => s + d.valor, 0);
+  const porCat = new Map(), porMes = new Map(); const pagou = { a: 0, b: 0 }, parte = { a: 0, b: 0 };
+  for (const d of ds) {
+    porCat.set(d.cat, (porCat.get(d.cat) || 0) + d.valor);
+    porMes.set(d.data.slice(0, 7), (porMes.get(d.data.slice(0, 7)) || 0) + d.valor);
+    pagou.a += d.pagou.a; pagou.b += d.pagou.b; parte.a += d.devido.a; parte.b += d.devido.b;
+  }
+  const cats = [...porCat].sort((x, y) => y[1] - x[1]).map(([id, v]) => [cat(id).e + ' ' + cat(id).r, v]);
+  const meses = [...porMes].sort((x, y) => x[0].localeCompare(y[0])).slice(-6).map(([k, v]) => [rotuloMes(k), v]);
+  const pes = [EU(), OUT()];
+  return `<h2>Totais de ${esc(g.nome)}</h2><p class="meta" style="margin:-8px 0 8px;color:var(--suave)">Total gasto: <b style="color:var(--tinta)">${R(total)}</b></p>
+  <p class="sub">Por categoria</p>${barras(cats)}
+  <p class="sub">Por mês</p>${barras(meses, 'b')}
+  <p class="sub">Quanto cada um pagou</p>${barras(pes.map(p => [quem(p), pagou[p]]))}
+  <p class="sub">Parte de cada um nas despesas</p>${barras(pes.map(p => [quem(p), parte[p]]), 'b')}
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`;
+}
+
+/* ============================================================
+   EXPORTAÇÃO / IMPORTAÇÃO
+   ============================================================ */
+function baixar(nomeArq, conteudo, tipo) {
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+  const a = document.createElement('a'); a.href = url; a.download = nomeArq;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function csvLinhas(D, gid) {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const n = c => (c / 100).toFixed(2).replace('.', ',');
+  const A = nome('a'), B = nome('b');
+  const rows = [['Data', 'Tipo', 'Grupo', 'Descrição', 'Categoria', 'Valor (R$)', `Pagou ${A}`, `Pagou ${B}`, `Parte ${A}`, `Parte ${B}`, 'Observação'].map(q).join(';')];
+  const todos = [
+    ...[...D.desp.values()].filter(d => !d.apagada && (!gid || d.grupo === gid)).map(d => ({ data: d.data, ts: d.ts, l: [d.data, 'Despesa', (D.grupos.get(d.grupo) || {}).nome, d.desc, cat(d.cat).r, n(d.valor), n(d.pagou.a), n(d.pagou.b), n(d.devido.a), n(d.devido.b), d.nota || ''] })),
+    ...[...D.pag.values()].filter(p => !p.apagado && (!gid || p.grupo === gid)).map(p => ({ data: p.data, ts: p.ts, l: [p.data, 'Pagamento', (D.grupos.get(p.grupo) || {}).nome, `${nome(p.de)} pagou ${nome(p.para)}`, p.forma || '', n(p.valor), '', '', '', '', ''] }))
+  ].sort((x, y) => x.data.localeCompare(y.data) || x.ts - y.ts);
+  todos.forEach(t => rows.push(t.l.map(q).join(';')));
+  return '\ufeff' + rows.join('\r\n');
+}
+async function importarArquivo(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    if (!j || !Array.isArray(j.eventos)) throw new Error('formato');
+    const ids = new Set(data.eventos.map(e => e.id)); let n = 0;
+    for (const e of j.eventos) if (e && e.id && e.tipo && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
+    store.save(data); toast(n ? `${n} registros novos importados.` : 'Nada novo para importar.'); fim();
+  } catch (err) { toast('Arquivo inválido. Use um backup do Equilibra.'); }
+}
+
+/* ============================================================
+   AÇÕES
+   ============================================================ */
+const AC = {
+  comecar() {
+    const a = $('#n-a').value.trim(), b = $('#n-b').value.trim();
+    if (!a || !b) return toast('Preencha os dois nomes.');
+    if (a.toLowerCase() === b.toLowerCase()) return toast('Use nomes diferentes.');
+    data = { v: 1, config: { nomes: { a, b }, eu: 'a' }, eventos: [] };
+    store.save(data); render(); rolar();
+  },
+  tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; render(); rolar(); },
+  abrirGrupo(d) { ui.view = { t: 'grupo', id: d.id }; ui.busca = ''; render(); rolar(); },
+  voltar() {
+    if (ui.view && ui.view.t === 'despesa' && ui.view.grupo && ui.view.volta !== 'atividade') ui.view = { t: 'grupo', id: ui.view.grupo };
+    else ui.view = null;
+    render(); rolar();
+  },
+  abrirDespesa(d) {
+    const D = derivar(), x = D.desp.get(d.id); if (!x) return;
+    ui.view = { t: 'despesa', id: d.id, grupo: x.grupo, volta: ui.tab === 'atividade' && !ui.view ? 'atividade' : '' };
+    render(); rolar();
+  },
+  novaDespesa(d) { abrirSheet(formDespesa(null, d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : 'casal'))); atualizarHint(); },
+  editarDespesa(d) { const x = derivar().desp.get(d.id); if (x) { abrirSheet(formDespesa(x)); atualizarHint(); } },
+  salvarDespesa() {
+    const r = lerForm(sheetEstado.id);
+    if (r.erro) return erroForm(r.erro);
+    if (sheetEstado.novo) addEvento({ id: sheetEstado.id, tipo: 'despesa', dados: r.dados });
+    else addEvento({ tipo: 'despesa_edit', alvo: sheetEstado.id, dados: r.dados });
+    fecharSheet(); toast('Despesa salva.'); fim();
+  },
+  apagarDespesa(d) {
+    confirmar('Apagar esta despesa?', 'Apagar', () => {
+      const x = derivar().desp.get(d.id);
+      addEvento({ tipo: 'despesa_del', alvo: d.id });
+      ui.view = x ? { t: 'grupo', id: x.grupo } : null; toast('Despesa apagada.'); fim(); rolar();
+    });
+  },
+  comentar(d) {
+    const el = $('#coment'), t = el.value.trim(); if (!t) return;
+    addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
+  },
+  acertar(d) { abrirSheet(formPagamento(d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : ''))); preencherPagamento(); },
+  salvarPagamento() {
+    const valor = parseValor($('#p-valor').value);
+    if (!(valor > 0)) return erroForm('Informe um valor maior que zero.');
+    const [de, para] = $('#p-dir').value.split('>');
+    addEvento({ tipo: 'pagamento', dados: { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() } });
+    fecharSheet(); toast('Pagamento registrado.'); fim();
+  },
+  abrirPagamento(d) {
+    const p = derivar().pag.get(d.id); if (!p) return;
+    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button><button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">Apagar</button></div>`);
+  },
+  apagarPagamento(d) { confirmar('Apagar este pagamento?', 'Apagar', () => { addEvento({ tipo: 'pagamento_del', alvo: d.id }); toast('Pagamento apagado.'); fim(); }); },
+  novoGrupo() { abrirSheet(formGrupo(null)); },
+  menuGrupo() {
+    const g = derivar().grupos.get(ui.view.id);
+    abrirSheet(`<h2>${esc(g.nome)}</h2><button class="opcao" data-a="editarGrupo">✏️ Editar grupo</button>${g.padrao ? '' : '<button class="opcao deve" data-a="apagarGrupo">🗑️ Apagar grupo</button>'}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+  },
+  editarGrupo() { abrirSheet(formGrupo(derivar().grupos.get(ui.view.id))); },
+  salvarGrupo() {
+    const n = $('#g-nome').value.trim(); if (!n) return erroForm('Dê um nome ao grupo.');
+    const dados = { nome: n, icone: $('#g-icone').value };
+    if (sheetEstado.novo) addEvento({ id: sheetEstado.id, tipo: 'grupo', dados });
+    else addEvento({ tipo: 'grupo_edit', alvo: sheetEstado.id, dados });
+    fecharSheet(); toast('Grupo salvo.'); fim();
+  },
+  apagarGrupo() {
+    const id = ui.view.id;
+    confirmar('Apagar este grupo e suas despesas?', 'Apagar', () => { addEvento({ tipo: 'grupo_del', alvo: id }); ui.view = null; toast('Grupo apagado.'); fim(); rolar(); });
+  },
+  totais(d) { abrirSheet(sheetTotais(derivar(), d.g)); },
+  csv(d) { baixar(d.g ? 'equilibra-grupo.csv' : 'equilibra-tudo.csv', csvLinhas(derivar(), d.g || null), 'text/csv;charset=utf-8'); toast('CSV gerado.'); },
+  exportar() { baixar('equilibra-backup.json', JSON.stringify(data), 'application/json'); toast('Backup gerado.'); },
+  importar() { $('#arquivo').click(); },
+  resetar() {
+    confirmar('Apagar todos os dados deste aparelho? Não dá para desfazer.', 'Apagar tudo', () => { data = null; store.save(null); ui.view = null; ui.tab = 'grupos'; render(); });
+  },
+  salvarNomes() {
+    const a = $('#c-a').value.trim(), b = $('#c-b').value.trim();
+    if (!a || !b) return toast('Preencha os dois nomes.');
+    if (a.toLowerCase() === b.toLowerCase()) return toast('Use nomes diferentes.');
+    data.config.nomes[EU()] = a; data.config.nomes[OUT()] = b; store.save(data); toast('Nomes salvos.'); render();
+  },
+  fecharSheet() { fecharSheet(); },
+  confirmarOk() { const cb = confirmCb; confirmCb = null; fecharSheet(); if (cb) cb(); }
+};
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-a]'); if (!el) return;
+  const f = AC[el.dataset.a]; if (f) f(el.dataset, el);
+});
+document.addEventListener('change', e => {
+  const id = e.target.id;
+  if (id === 'f-tipo') { $('#divCampos').innerHTML = divHTML(e.target.value, null); atualizarHint(); }
+  else if (id === 'f-pagou') { $('#pagoCampos').innerHTML = pagoHTML(e.target.value, null); }
+  else if (id === 'p-grupo') preencherPagamento();
+  else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
+  else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
+  else if (id && id.startsWith('q-')) atualizarHint();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'busca') {
+    ui.busca = e.target.value;
+    if (ui.view && ui.view.t === 'grupo') $('#lista').innerHTML = listaGrupo(derivar(), ui.view.id, ui.busca);
+  } else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#sheet').hidden) fecharSheet();
+  if (e.key === 'Enter' && e.target.id === 'coment') { const b = e.target.nextElementSibling; if (b) b.click(); }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && data) fim(); });
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render() {
+  const app = $('#app');
+  if (!data) { app.innerHTML = telaBoas(); return; }
+  const D = derivar();
+  let v = ui.view;
+  if (v && v.t === 'grupo') { const g = D.grupos.get(v.id); if (!g || g.apagado) v = ui.view = null; }
+  if (v && v.t === 'despesa') { const d = D.desp.get(v.id); if (!d || d.apagada) v = ui.view = (v.grupo && D.grupos.get(v.grupo) && !D.grupos.get(v.grupo).apagado) ? { t: 'grupo', id: v.grupo } : null; }
+  let html, fab = '', nav = '';
+  if (v && v.t === 'grupo') { html = telaGrupo(D, v.id); fab = `<button class="fab sozinho" data-a="novaDespesa" data-g="${esc(v.id)}">+ Adicionar despesa</button>`; }
+  else if (v && v.t === 'despesa') html = telaDespesa(D, v.id);
+  else {
+    html = ui.tab === 'atividade' ? telaAtividade(D) : ui.tab === 'conta' ? telaConta() : telaGrupos(D);
+    nav = navInferior();
+    if (ui.tab !== 'conta') fab = '<button class="fab" data-a="novaDespesa" data-g="">+ Adicionar despesa</button>';
+  }
+  app.innerHTML = html + fab + nav;
+}
+
+if (data) gerarRecorrentes();
+render();
+})();
+</script>
+</body>
+</html>
