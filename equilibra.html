@@ -126,6 +126,22 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .sub{font-size:15px;font-weight:700;margin:18px 0 10px}
 
 /* navegação */
+/* tipos de grupo e ícones */
+.tipos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tipo-chip{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;border:1.5px solid var(--linha);border-radius:12px;padding:10px 4px;min-height:78px;font-size:12px;font-weight:600;text-align:center;line-height:1.15;background:#fff}
+.tipo-chip .ci{display:grid;place-items:center;height:30px;font-size:24px;line-height:1}
+.tipo-chip.on{border-color:var(--verde);background:var(--verde-claro);color:var(--verde-esc)}
+.tipo-chip.novo{border-style:dashed;color:var(--verde-esc);justify-content:center}
+.grade-ic{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px}
+.grade-ic button{display:grid;place-items:center;min-height:46px;border:1.5px solid var(--linha);border-radius:10px;font-size:22px;background:#fff}
+.grade-ic button.on{border-color:var(--verde);background:var(--verde-claro)}
+.previa{display:flex;align-items:center;gap:12px;min-height:54px;padding:10px 14px;border:1.5px solid var(--linha);border-radius:12px;margin-bottom:6px;color:var(--suave);font-size:14px}
+.previa b{color:var(--tinta);font-size:16px}
+.previa .pi{display:grid;place-items:center;min-width:34px;font-size:28px}
+.tipo-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--linha)}
+.tipo-item span{display:flex;align-items:center;gap:10px;font-size:16px;min-width:0}
+.linha .ico svg{display:block}
+
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;border-top:1px solid var(--linha);display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:env(safe-area-inset-bottom);z-index:7}
 .nav button{padding:8px 4px 9px;text-align:center;font-size:12px;font-weight:600;color:var(--suave);min-height:60px}
 .nav button span{display:block;font-size:22px;line-height:1.2}
@@ -239,7 +255,47 @@ const CATS = [
   { id: 'geral', r: 'Geral', e: '🧾' }
 ];
 const cat = id => CATS.find(c => c.id === id) || CATS[CATS.length - 1];
-const ICONES_GRUPO = [['🏠', 'Casa'], ['✈️', 'Viagem'], ['❤️', 'Casal'], ['🛒', 'Compras'], ['📌', 'Outro']];
+const CARTOES = [
+  { id: 'laranja', r: 'Laranja', c: '#ff7a00' },
+  { id: 'vermelho', r: 'Vermelho', c: '#d62839' },
+  { id: 'roxo', r: 'Roxo', c: '#7b2fbe' },
+  { id: 'azul', r: 'Azul', c: '#1f6feb' },
+  { id: 'verde', r: 'Verde', c: '#1e9e5a' },
+  { id: 'rosa', r: 'Rosa', c: '#e0479e' },
+  { id: 'amarelo', r: 'Amarelo', c: '#f2b01e' },
+  { id: 'preto', r: 'Preto', c: '#2b2f33' },
+  { id: 'turquesa', r: 'Turquesa', c: '#0e8a7b' },
+  { id: 'cinza', r: 'Cinza', c: '#7a8793' },
+  { id: 'marrom', r: 'Marrom', c: '#8d5524' },
+  { id: 'vinho', r: 'Vinho', c: '#8e1b3a' }
+];
+const EMOJIS = ['🏠', '🏢', '🔑', '💡', '⚡', '💧', '🚿', '🔥', '🌐', '📶', '📱', '📺',
+  '🎬', '🎵', '🛒', '🍽️', '☕', '🚗', '⛽', '🚌', '✈️', '🏖️', '💊', '🏥',
+  '🐾', '🎁', '👶', '🎓', '🏋️', '💈', '🧾', '💰', '🏦', '💳', '🧺', '🛠️',
+  '🌱', '🎉', '❤️', '📌', '⭐', '🛍️', '🧹', '🍕', '🎮', '📚', '🚲', '🏷️'];
+const TIPOS_BASE = [
+  { id: 'b-casa', nome: 'Casa', icone: '🏠' },
+  { id: 'b-viagem', nome: 'Viagem', icone: '✈️' },
+  { id: 'b-casal', nome: 'Casal', icone: '❤️' },
+  { id: 'b-compras', nome: 'Compras', icone: '🛒' },
+  { id: 'b-inter', nome: 'Cartão de crédito Inter', icone: 'card:laranja' },
+  { id: 'b-energia', nome: 'Conta de energia', icone: '⚡' },
+  { id: 'b-agua', nome: 'Conta de água', icone: '💧' },
+  { id: 'b-internet', nome: 'Internet', icone: '🌐' },
+  { id: 'b-gas', nome: 'Gás', icone: '🔥' },
+  { id: 'b-telefone', nome: 'Telefone', icone: '📱' },
+  { id: 'b-condominio', nome: 'Condomínio', icone: '🏢' },
+  { id: 'b-aluguel', nome: 'Aluguel', icone: '🔑' },
+  { id: 'b-streaming', nome: 'Streaming', icone: '📺' },
+  { id: 'b-outro', nome: 'Outro', icone: '📌' }
+];
+const tiposAtivos = D => [...TIPOS_BASE, ...[...D.tipos.values()].filter(t => !t.apagado)];
+function iconeCartao(cor, px) {
+  const c = (CARTOES.find(x => x.id === cor) || CARTOES[0]).c, w = px || 28;
+  return `<svg viewBox="0 0 32 24" width="${w}" height="${Math.round(w * 0.75)}" aria-hidden="true"><rect x="1" y="2" width="30" height="20" rx="3.5" fill="${c}"/><rect x="1" y="7" width="30" height="4" fill="rgba(0,0,0,.3)"/><rect x="5" y="15" width="8" height="4" rx="1.2" fill="rgba(255,255,255,.88)"/></svg>`;
+}
+const iconeHTML = (v, px) => (String(v || '').startsWith('card:') ? iconeCartao(String(v).slice(5), px) : esc(v));
+const iconeTxt = v => (String(v || '').startsWith('card:') ? '💳' : (v || ''));
 const FORMAS = ['Pix', 'Dinheiro', 'Transferência', 'Outro'];
 
 const EU = () => data.config.eu;
@@ -261,12 +317,14 @@ function addEvento(e) {
 function derivar() {
   const evs = [...data.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
   const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
-  const desp = new Map(), pag = new Map(), coms = [];
+  const desp = new Map(), pag = new Map(), coms = [], tipos = new Map();
   for (const e of evs) {
     switch (e.tipo) {
       case 'grupo': grupos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
       case 'grupo_edit': if (grupos.has(e.alvo)) Object.assign(grupos.get(e.alvo), e.dados); break;
       case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) g.apagado = true; break; }
+      case 'tgrupo': tipos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
+      case 'tgrupo_del': if (tipos.has(e.alvo)) tipos.get(e.alvo).apagado = true; break;
       case 'despesa': desp.set(e.id, { id: e.id, ...e.dados, autor: e.autor, ts: e.ts }); break;
       case 'despesa_edit': if (desp.has(e.alvo)) Object.assign(desp.get(e.alvo), e.dados, { editado: true }); break;
       case 'despesa_del': if (desp.has(e.alvo)) desp.get(e.alvo).apagada = true; break;
@@ -275,7 +333,7 @@ function derivar() {
       case 'comentario': coms.push({ id: e.id, alvo: e.alvo, texto: e.dados.texto, autor: e.autor, ts: e.ts }); break;
     }
   }
-  return { evs, grupos, desp, pag, coms };
+  return { evs, grupos, desp, pag, coms, tipos };
 }
 function saldoGrupo(D, gid) {
   const b = { a: 0, b: 0 };
@@ -387,7 +445,7 @@ function telaGrupos(D) {
   const linhas = gruposAtivos(D).map(g => {
     const s = saldoGrupo(D, g.id)[EU()]; total += s;
     const f = fraseSaldo(s);
-    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${esc(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span><span class="s ${f.cls}">${esc(f.curto)}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
+    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${iconeHTML(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span><span class="s ${f.cls}">${esc(f.curto)}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
   }).join('');
   const f = fraseSaldo(total);
   return topoMarca() +
@@ -494,6 +552,8 @@ function textoAtividade(e, D) {
     case 'grupo': return { t: `${A} criou o grupo “${e.dados.nome}”.` };
     case 'grupo_edit': return { t: `${A} editou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
     case 'grupo_del': return { t: `${A} apagou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
+    case 'tgrupo': return { t: `${A} criou o tipo “${e.dados.nome}”.` };
+    case 'tgrupo_del': return { t: `${A} apagou um tipo de grupo.` };
     case 'comentario': return { t: `${A} comentou em “${dd ? dd.desc : 'uma despesa'}”.`, s: `“${e.dados.texto}”` };
   }
   return { t: '' };
@@ -522,6 +582,15 @@ function blocoSync() {
     ${ligado ? '' : `<p class="explica">Peça para ${esc(nome(ou))} ativar a sincronização no celular dela e depois toque no botão abaixo.</p><button class="btn" data-a="conectarOutro">Conectar arquivo de ${esc(nome(ou))}</button>`}
     <button class="btn-sec" data-a="sync" style="margin-top:10px">Sincronizar agora</button>`;
 }
+function blocoTipos() {
+  const meus = [...derivar().tipos.values()].filter(t => !t.apagado);
+  const lista = meus.length
+    ? meus.map(t => `<div class="tipo-item"><span>${iconeHTML(t.icone, 26)} ${esc(t.nome)}</span><button class="btn-txt" style="padding:6px 8px;min-height:36px" data-a="apagarTipo" data-id="${esc(t.id)}">Apagar</button></div>`).join('')
+    : '<p class="explica">Você ainda não criou tipos próprios.</p>';
+  return `<h2>Tipos de grupo</h2>
+    <p class="explica">Crie tipos como “Cartão de crédito Inter” ou “Conta de energia” e escolha o ícone que quiser. Eles aparecem ao criar um grupo.</p>${lista}
+    <button class="btn-sec" data-a="novoTipo" style="margin-top:10px">Criar novo tipo</button>`;
+}
 function telaConta() {
   const quemSou = data.sync
     ? `<p class="explica">Neste aparelho você é <b>${esc(nome(EU()))}</b>.</p>`
@@ -534,6 +603,7 @@ function telaConta() {
     <button class="btn" data-a="salvarNomes">Salvar nomes</button>
     <h2>Quem está usando este aparelho</h2>
     ${quemSou}
+    ${blocoTipos()}
     <h2>Dados</h2>
     <button class="opcao" data-a="csv" data-g="">📄 Exportar tudo em CSV</button>
     <button class="opcao" data-a="exportar">💾 Baixar backup (JSON)</button>
@@ -589,7 +659,7 @@ function formDespesa(d, gid) {
   const gs = gruposAtivos(D);
   return `<h2>${novo ? 'Nova despesa' : 'Editar despesa'}</h2>
   <div class="erro" id="erro" role="alert" hidden></div>
-  <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc((g.icone || '') + ' ' + g.nome)}</option>`).join('')}</select></label>
+  <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}" ${novo ? 'autofocus' : ''}></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="f-valor" inputmode="decimal" placeholder="0,00" value="${v.valor ? fmtIn(v.valor) : ''}"></span></label>
   <div class="dupla">
@@ -650,7 +720,7 @@ function formPagamento(gid) {
   if (!gid) { const com = gs.find(g => saldoGrupo(D, g.id)[EU()] !== 0); gid = (com || gs[0]).id; }
   sheetEstado = { pagamento: true };
   return `<h2>Acertar contas</h2><div class="erro" id="erro" role="alert" hidden></div>
-  <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc((g.icone || '') + ' ' + g.nome)}</option>`).join('')}</select></label>
+  <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Quem pagou</span><select id="p-dir"></select></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="p-valor" inputmode="decimal" placeholder="0,00"></span></label>
   <div class="dupla">
@@ -667,13 +737,49 @@ function preencherPagamento() {
 }
 
 /* --- grupo --- */
-function formGrupo(g) {
-  const novo = !g;
-  sheetEstado = { id: novo ? uid() : g.id, novo };
+function formGrupo(g, rasc) {
+  const novo = !g, tipos = tiposAtivos(derivar());
+  const nomeV = rasc ? rasc.nome : (g ? g.nome : '');
+  const icone = rasc ? rasc.icone : (g ? g.icone : '');
+  const tipoK = rasc ? rasc.tipoK : (g ? (tipos.find(t => t.icone === g.icone) || {}).id : undefined);
+  sheetEstado = { grupoForm: true, id: novo ? uid() : g.id, novo, icone: icone || '', tipoK, auto: rasc ? (rasc.auto || '') : '' };
+  const chips = tipos.map(t => `<button type="button" class="tipo-chip ${t.id === tipoK ? 'on' : ''}" aria-pressed="${t.id === tipoK}" data-a="escolherTipo" data-k="${esc(t.id)}"><span class="ci" aria-hidden="true">${iconeHTML(t.icone, 30)}</span>${esc(t.nome)}</button>`).join('');
   return `<h2>${novo ? 'Novo grupo' : 'Editar grupo'}</h2><div class="erro" id="erro" role="alert" hidden></div>
-  <label class="campo"><span>Nome do grupo</span><input id="g-nome" maxlength="30" value="${esc(g ? g.nome : '')}" ${novo ? 'autofocus' : ''}></label>
-  <label class="campo"><span>Tipo</span><select id="g-icone">${ICONES_GRUPO.map(([e, r]) => `<option value="${e}" ${g && g.icone === e ? 'selected' : ''}>${e} ${r}</option>`).join('')}</select></label>
+  <label class="campo"><span>Nome do grupo</span><input id="g-nome" maxlength="30" value="${esc(nomeV)}" ${novo && !rasc ? 'autofocus' : ''}></label>
+  <div class="campo" role="group" aria-label="Tipo"><span>Tipo</span><div class="tipos">${chips}<button type="button" class="tipo-chip novo" data-a="novoTipo"><span class="ci" aria-hidden="true">+</span>Criar novo tipo</button></div></div>
   <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarGrupo">Salvar</button></div>`;
+}
+function reabrirGrupo(v) {
+  const g = v.g ? derivar().grupos.get(v.g) : null;
+  abrirSheet(formGrupo(g, v));
+}
+
+/* --- tipo de grupo (nome + ícone) --- */
+function formTipo(volta) {
+  sheetEstado = { tipoForm: true, volta, icone: '' };
+  const cartoes = CARTOES.map(c => `<button type="button" data-a="escolherIcone" data-i="card:${c.id}" aria-label="Cartão ${esc(c.r)}" aria-pressed="false">${iconeCartao(c.id, 30)}</button>`).join('');
+  const emojis = EMOJIS.map(e => `<button type="button" data-a="escolherIcone" data-i="${e}" aria-pressed="false">${e}</button>`).join('');
+  return `<h2>Novo tipo</h2><div class="erro" id="erro" role="alert" hidden></div>
+  <label class="campo"><span>Nome do tipo</span><input id="t-nome" maxlength="30" placeholder="Ex.: Cartão de crédito Inter" autofocus></label>
+  <div class="previa" id="t-prev">Toque em um ícone abaixo ou digite um emoji</div>
+  <p class="sub">Cartões coloridos</p><div class="grade-ic">${cartoes}</div>
+  <p class="sub">Outros ícones</p><div class="grade-ic">${emojis}</div>
+  <label class="campo"><span>Ou digite qualquer emoji</span><input id="t-emoji" maxlength="12" placeholder="Ex.: 🎸" autocomplete="off"></label>
+  <div class="acoes"><button class="btn-sec" data-a="cancelarTipo">Cancelar</button><button class="btn" data-a="salvarTipo">Salvar tipo</button></div>`;
+}
+function emojiDigitado() {
+  const em = (($('#t-emoji') || {}).value || '').trim();
+  return em && !em.startsWith('card:') ? [...em].slice(0, 6).join('') : '';
+}
+function iconeDoTipo() { return emojiDigitado() || (sheetEstado && sheetEstado.icone) || ''; }
+function atualizarPrevia() {
+  const p = $('#t-prev'); if (!p) return;
+  const ic = iconeDoTipo(), n = (($('#t-nome') || {}).value || '').trim(), dig = !!emojiDigitado();
+  document.querySelectorAll('#sheetBody .grade-ic button').forEach(b => {
+    const on = !dig && b.dataset.i === sheetEstado.icone;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  });
+  p.innerHTML = ic ? `<span class="pi" aria-hidden="true">${iconeHTML(ic, 34)}</span><b>${esc(n || 'Novo tipo')}</b>` : 'Toque em um ícone abaixo ou digite um emoji';
 }
 
 /* --- totais --- */
@@ -791,6 +897,39 @@ const AC = {
   },
   apagarPagamento(d) { confirmar('Apagar este pagamento?', 'Apagar', () => { addEvento({ tipo: 'pagamento_del', alvo: d.id }); toast('Pagamento apagado.'); fim(); }); },
   novoGrupo() { abrirSheet(formGrupo(null)); },
+  escolherTipo(d) {
+    const t = tiposAtivos(derivar()).find(x => x.id === d.k); if (!t) return;
+    sheetEstado.icone = t.icone; sheetEstado.tipoK = t.id;
+    const inp = $('#g-nome');
+    if (inp && (!inp.value.trim() || inp.value === sheetEstado.auto)) { inp.value = t.nome.slice(0, 30); sheetEstado.auto = inp.value; }
+    document.querySelectorAll('#sheetBody .tipo-chip[data-k]').forEach(b => {
+      const on = b.dataset.k === t.id;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    });
+  },
+  novoTipo() {
+    let volta = null;
+    if (sheetEstado && sheetEstado.grupoForm) {
+      volta = { g: sheetEstado.novo ? null : sheetEstado.id, nome: ($('#g-nome') || {}).value || '', icone: sheetEstado.icone, tipoK: sheetEstado.tipoK, auto: sheetEstado.auto };
+    }
+    abrirSheet(formTipo(volta));
+  },
+  escolherIcone(d) { sheetEstado.icone = d.i; const em = $('#t-emoji'); if (em) em.value = ''; atualizarPrevia(); },
+  cancelarTipo() { const v = sheetEstado && sheetEstado.volta; if (v) reabrirGrupo(v); else fecharSheet(); },
+  salvarTipo() {
+    const n = $('#t-nome').value.trim(), ic = iconeDoTipo();
+    if (!n) return erroForm('Dê um nome ao tipo.');
+    if (!ic) return erroForm('Escolha um ícone.');
+    const id = uid(), v = sheetEstado.volta;
+    addEvento({ id, tipo: 'tgrupo', dados: { nome: n, icone: ic } });
+    toast('Tipo criado.');
+    if (v) {
+      const troca = !v.nome.trim() || v.nome === v.auto;
+      reabrirGrupo({ ...v, icone: ic, tipoK: id, nome: troca ? n : v.nome, auto: troca ? n : v.auto });
+    } else fecharSheet();
+    fim();
+  },
+  apagarTipo(d) { confirmar('Apagar este tipo? Os grupos que já usam o ícone não mudam.', 'Apagar', () => { addEvento({ tipo: 'tgrupo_del', alvo: d.id }); toast('Tipo apagado.'); fim(); }); },
   menuGrupo() {
     const g = derivar().grupos.get(ui.view.id);
     abrirSheet(`<h2>${esc(g.nome)}</h2><button class="opcao" data-a="editarGrupo">✏️ Editar grupo</button>${g.padrao ? '' : '<button class="opcao deve" data-a="apagarGrupo">🗑️ Apagar grupo</button>'}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
@@ -798,7 +937,7 @@ const AC = {
   editarGrupo() { abrirSheet(formGrupo(derivar().grupos.get(ui.view.id))); },
   salvarGrupo() {
     const n = $('#g-nome').value.trim(); if (!n) return erroForm('Dê um nome ao grupo.');
-    const dados = { nome: n, icone: $('#g-icone').value };
+    const dados = { nome: n, icone: sheetEstado.icone || '📌' };
     if (sheetEstado.novo) addEvento({ id: sheetEstado.id, tipo: 'grupo', dados });
     else addEvento({ tipo: 'grupo_edit', alvo: sheetEstado.id, dados });
     fecharSheet(); toast('Grupo salvo.'); fim();
@@ -845,7 +984,8 @@ document.addEventListener('input', e => {
   if (e.target.id === 'busca') {
     ui.busca = e.target.value;
     if (ui.view && ui.view.t === 'grupo') $('#lista').innerHTML = listaGrupo(derivar(), ui.view.id, ui.busca);
-  } else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
+  } else if (e.target.id === 't-nome' || e.target.id === 't-emoji') atualizarPrevia();
+  else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#sheet').hidden) fecharSheet();
