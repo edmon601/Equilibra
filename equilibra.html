@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#0e8a7b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Equilibra</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -61,8 +64,8 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .linha:active{background:var(--fundo)}
 .linha .ico{width:42px;height:42px;border-radius:12px;background:var(--verde-claro);display:grid;place-items:center;font-size:21px;flex:none}
 .linha .mid{flex:1;min-width:0}
-.linha .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.linha .s{font-size:14px;color:var(--suave)}
+.linha .t{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linha .s{display:block;font-size:14px;color:var(--suave)}
 .linha .dir{text-align:right;flex:none}
 .linha .dir small{display:block;font-size:12px}
 .linha .dir b{font-size:16px}
@@ -445,7 +448,7 @@ function telaGrupos(D) {
   const linhas = gruposAtivos(D).map(g => {
     const s = saldoGrupo(D, g.id)[EU()]; total += s;
     const f = fraseSaldo(s);
-    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${iconeHTML(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span><span class="s ${f.cls}">${esc(f.curto)}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
+    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${iconeHTML(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span>${s ? `<span class="s ${f.cls}">${esc(f.curto)}</span>` : ''}</span><span aria-hidden="true" class="quite">›</span></button>`;
   }).join('');
   const f = fraseSaldo(total);
   return topoMarca() +
@@ -991,7 +994,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#sheet').hidden) fecharSheet();
   if (e.key === 'Enter' && e.target.id === 'coment') { const b = e.target.nextElementSibling; if (b) b.click(); }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && data) fim(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && data) { gestoSync = false; fim(); } });
 
 /* ============================================================
    SINCRONIZAÇÃO COM O GOOGLE DRIVE
@@ -1236,7 +1239,17 @@ function render() {
 
 if (data) gerarRecorrentes();
 render();
-if (data && data.sync) agendarSync();
+if (data && data.sync) sincronizar(false);
+
+/* O Google dá permissão por cerca de 1 hora e só deixa renová-la depois de um toque.
+   Se o acesso expirou, o primeiro toque na tela depois de abrir o app conclui a sincronização. */
+let gestoSync = false;
+document.addEventListener('click', () => {
+  if (gestoSync || !data || !data.sync || sincronizando || ui.sync.estado !== 'pendente') return;
+  gestoSync = true; sincronizar(true);
+});
+
+if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 })();
 </script>
 </body>
