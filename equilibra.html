@@ -168,6 +168,16 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .toast{position:fixed;left:50%;bottom:calc(130px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1b2a28;color:#fff;padding:11px 18px;border-radius:12px;z-index:30;font-size:15px;max-width:90%;text-align:center}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 @media (min-width:520px){body{padding:0}#app{box-shadow:0 0 0 1px var(--linha)}}
+.ativ[data-a]{cursor:pointer}
+.ativ.pend,.linha.pend,.linha.pag.pend{background:#fff6d6}
+.ativ.ok{background:#e5f5ec}
+.ativ.rec{background:#fdece4}
+.st{font-weight:700}
+.st.pend{color:#8a6400}.st.ok{color:var(--recebe)}.st.rec{color:var(--deve)}
+.stbox{margin:12px 16px;padding:12px 14px;border-radius:12px;background:var(--fundo)}
+.stbox.pend{background:#fff6d6;color:#6e5000}.stbox.ok{background:var(--recebe-bg);color:var(--recebe)}.stbox.rec{background:var(--deve-bg);color:var(--deve)}
+.hist{padding:10px 16px;border-bottom:1px solid var(--linha)}
+.hist small{display:block;color:var(--suave)}
 </style>
 </head>
 <body>
@@ -319,6 +329,9 @@ function derivar() {
   const evs = [...data.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
   const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
   const desp = new Map(), pag = new Map(), coms = [], tipos = new Map();
+  const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), verif = data.verif || {};
+  const nova = (e, tipo, item, k) => { const r = { id: e.id, item, k, tipo, autor: e.autor, ts: e.ts, dados: e.dados || {}, assin: e.assin }; rev.set(e.id, r); return r; };
+  const juntar = (m, k, e) => { if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
   for (const e of evs) {
     switch (e.tipo) {
       case 'grupo': grupos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
@@ -326,16 +339,213 @@ function derivar() {
       case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) g.apagado = true; break; }
       case 'tgrupo': tipos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
       case 'tgrupo_del': if (tipos.has(e.alvo)) tipos.get(e.alvo).apagado = true; break;
-      case 'despesa': desp.set(e.id, { id: e.id, ...e.dados, autor: e.autor, ts: e.ts }); break;
-      case 'despesa_edit': if (desp.has(e.alvo)) Object.assign(desp.get(e.alvo), e.dados, { editado: true }); break;
-      case 'despesa_del': if (desp.has(e.alvo)) desp.get(e.alvo).apagada = true; break;
-      case 'pagamento': pag.set(e.id, { id: e.id, ...e.dados, autor: e.autor, ts: e.ts }); break;
-      case 'pagamento_del': if (pag.has(e.alvo)) pag.get(e.alvo).apagado = true; break;
+      case 'despesa': itens.set(e.id, { k: 'd', id: e.id, revs: [nova(e, 'criar', e.id, 'd')] }); break;
+      case 'despesa_edit': { const it = itens.get(e.alvo); if (it && it.k === 'd') it.revs.push(nova(e, 'editar', e.alvo, 'd')); break; }
+      case 'despesa_del': { const it = itens.get(e.alvo); if (it && it.k === 'd') it.revs.push(nova(e, 'excluir', e.alvo, 'd')); break; }
+      case 'pagamento': itens.set(e.id, { k: 'p', id: e.id, revs: [nova(e, 'criar', e.id, 'p')] }); break;
+      case 'pagamento_del': { const it = itens.get(e.alvo); if (it && it.k === 'p') it.revs.push(nova(e, 'excluir', e.alvo, 'p')); break; }
+      case 'confirma': if (verif[e.id] === true && e.dados) juntar(confs, e.dados.rev, e); break;
+      case 'recusa': if (e.dados) juntar(recs, e.dados.rev, e); break;
       case 'comentario': coms.push({ id: e.id, alvo: e.alvo, texto: e.dados.texto, autor: e.autor, ts: e.ts }); break;
     }
   }
-  return { evs, grupos, desp, pag, coms, tipos };
+  for (const it of itens.values()) {
+    for (const r of it.revs) {
+      const o = r.autor === 'a' ? 'b' : 'a';
+      const cf = (confs.get(r.id) || []).find(x => x.autor === o) || (r.tipo === 'criar' && r.dados.origem ? { auto: true, autor: o, ts: r.ts } : null);
+      const rc = (recs.get(r.id) || []).find(x => x.autor === o);
+      r.cf = cf; r.rc = rc; r.st = cf ? 'confirmado' : rc ? 'recusado' : 'pendente';
+    }
+    for (const r of it.revs) {
+      if (r.tipo === 'excluir' && r.st === 'pendente' && r.dados.retirar && r.autor === it.revs[0].autor && it.revs.every(q => q === r || q.st !== 'confirmado')) {
+        r.st = 'confirmado'; r.cf = { auto: true, retirada: true, autor: r.autor, ts: r.ts };
+      }
+    }
+    let ef = null, ed = false; const ativas = [];
+    for (const r of it.revs) {
+      r.antes = ef;
+      if (r.st === 'recusado') continue;
+      ativas.push(r);
+      if (r.tipo === 'criar') ef = { ...r.dados };
+      else if (r.tipo === 'editar' && ef) { ef = { ...ef, ...r.dados }; ed = true; }
+    }
+    if (!ef) continue;
+    const L = ativas[ativas.length - 1];
+    ativas.forEach(r => { r.sup = r !== L && r.st === 'pendente'; });
+    const apagada = L.tipo === 'excluir' && L.st === 'confirmado';
+    const base = { id: it.id, ...ef, editado: ed, autor: it.revs[0].autor, ts: it.revs[0].ts, st: L.st, ultima: L, revs: it.revs, exclusaoPendente: L.tipo === 'excluir' && L.st === 'pendente' };
+    if (it.k === 'd') desp.set(it.id, { ...base, apagada }); else pag.set(it.id, { ...base, apagado: apagada });
+  }
+  return { evs, grupos, desp, pag, coms, tipos, rev };
 }
+/* ============================================================
+   CONFIRMAÇÃO POR DIGITAL (WebAuthn)
+   Cada aparelho cria uma chave guardada no chip de segurança.
+   Cada versão de uma despesa/pagamento é assinada por quem a fez
+   e confirmada (assinada) pela outra pessoa com a digital.
+   ============================================================ */
+const REVT = { despesa: 'criar', despesa_edit: 'editar', despesa_del: 'excluir', pagamento: 'criar', pagamento_del: 'excluir' };
+const revItem = e => (e.tipo === 'despesa' || e.tipo === 'pagamento') ? e.id : e.alvo;
+const revDe = e => ({ item: revItem(e), id: e.id, tipo: REVT[e.tipo], autor: e.autor, dados: e.dados || {} });
+const suporteDigital = () => !!(window.isSecureContext && window.PublicKeyCredential && navigator.credentials && window.crypto && crypto.subtle);
+const b64u = {
+  enc: buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: s => { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+};
+function canon(o) {
+  if (o === null || o === undefined || typeof o !== 'object') return JSON.stringify(o === undefined ? null : o);
+  if (Array.isArray(o)) return '[' + o.map(canon).join(',') + ']';
+  return '{' + Object.keys(o).filter(k => o[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + canon(o[k])).join(',') + '}';
+}
+async function sha256(x) { return new Uint8Array(await crypto.subtle.digest('SHA-256', typeof x === 'string' ? new TextEncoder().encode(x) : x)); }
+const desafio = r => sha256(`eq1|${r.item}|${r.id}|${r.tipo}|${r.autor}|${canon(r.dados || {})}`);
+
+async function criarChave() {
+  if (!suporteDigital()) throw new Error('Este navegador não suporta confirmação por digital.');
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'Equilibra' },
+    user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nome(EU()), displayName: nome(EU()) },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+    attestation: 'none', timeout: 60000
+  } });
+  const pub = cred.response.getPublicKey && cred.response.getPublicKey();
+  if (!pub) throw new Error('Este celular não entregou a chave pública. Atualize o Chrome.');
+  const cid = b64u.enc(cred.rawId);
+  addEvento({ tipo: 'chave', dados: { cid, pub: b64u.enc(pub) } });
+  data.cidLocal = cid; store.save(data);
+  return cid;
+}
+async function garantirChave() {
+  if (data.cidLocal && data.eventos.some(k => k.tipo === 'chave' && k.autor === EU() && k.dados.cid === data.cidLocal)) return data.cidLocal;
+  return criarChave();
+}
+async function assinar(rev, cid) {
+  const cred = await navigator.credentials.get({ publicKey: {
+    challenge: await desafio(rev),
+    allowCredentials: [{ type: 'public-key', id: b64u.dec(cid), transports: ['internal'] }],
+    userVerification: 'required', timeout: 60000
+  } });
+  const r = cred.response;
+  return { cid, ad: b64u.enc(r.authenticatorData), cd: b64u.enc(r.clientDataJSON), sig: b64u.enc(r.signature) };
+}
+function derParaRaw(d) {
+  let i = 2; if (d[1] & 0x80) i = 2 + (d[1] & 0x7f);
+  if (d[i] !== 2) throw new Error('assinatura');
+  const rl = d[i + 1]; const r = d.slice(i + 2, i + 2 + rl); i += 2 + rl;
+  if (d[i] !== 2) throw new Error('assinatura');
+  const sl = d[i + 1]; const s = d.slice(i + 2, i + 2 + sl);
+  const fix = x => { while (x.length > 32 && x[0] === 0) x = x.slice(1); const o = new Uint8Array(32); o.set(x, 32 - x.length); return o; };
+  const out = new Uint8Array(64); out.set(fix(r), 0); out.set(fix(s), 32); return out;
+}
+async function verificarAss(a, rev, pubB64) {
+  const ch = await desafio(rev);
+  const cd = b64u.dec(a.cd), cdj = JSON.parse(new TextDecoder().decode(cd));
+  if (cdj.type !== 'webauthn.get' || cdj.challenge !== b64u.enc(ch)) return false;
+  const ad = b64u.dec(a.ad);
+  if (ad.length < 37 || !(ad[32] & 0x04)) return false; /* bit 0x04 = digital/biometria verificada */
+  const h = await sha256(cd), msg = new Uint8Array(ad.length + 32); msg.set(ad, 0); msg.set(h, ad.length);
+  const key = await crypto.subtle.importKey('spki', b64u.dec(pubB64), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derParaRaw(b64u.dec(a.sig)), msg);
+}
+async function addEventoAssinado(e) {
+  e.id = e.id || uid(); e.ts = e.ts || Date.now(); e.autor = EU();
+  const cid = await garantirChave();
+  e.assin = await assinar(revDe(e), cid);
+  data.eventos.push(e); store.save(data);
+}
+function msgBio(er) {
+  const n = er && er.name, m = String((er && er.message) || er);
+  if (n === 'NotAllowedError') return 'Digital cancelada ou não reconhecida. Tente de novo.';
+  if (n === 'InvalidStateError') return 'Este aparelho já tem uma chave. Tente de novo.';
+  return 'Não foi possível usar a digital: ' + m;
+}
+/* confere as assinaturas (de quem fez e de quem confirmou) e guarda o resultado só neste aparelho */
+let vp = Promise.resolve();
+const verificarTudo = () => (vp = vp.then(_verificar).catch(() => {}));
+async function _verificar() {
+  if (!data || !suporteDigital()) return;
+  data.verif = data.verif || {};
+  const porId = new Map(data.eventos.map(e => [e.id, e]));
+  let mudou = false;
+  for (const e of data.eventos) {
+    if (data.verif[e.id] !== undefined) continue;
+    let rev, ass;
+    if (e.tipo === 'confirma' && e.dados) { const r = porId.get(e.dados.rev); if (!r || !REVT[r.tipo]) continue; rev = r; ass = e.dados.ass; }
+    else if (e.assin && REVT[e.tipo]) { rev = e; ass = e.assin; }
+    else continue;
+    const k = data.eventos.find(x => x.tipo === 'chave' && x.autor === e.autor && ass && x.dados.cid === ass.cid);
+    if (!k) continue;
+    let ok = false;
+    try { ok = await verificarAss(ass, revDe(rev), k.dados.pub); } catch (er) { ok = false; }
+    data.verif[e.id] = ok; mudou = true;
+  }
+  if (mudou) { store.save(data); renderSeguro(); }
+}
+
+/* ---- estado das versões (usado nas telas) ---- */
+function statusRev(r) {
+  const o = r.autor === 'a' ? 'b' : 'a', ex = r.tipo === 'excluir';
+  if (r.st === 'confirmado') {
+    if (r.cf.retirada) return { cls: 'ok', txt: 'Retirado por quem criou' };
+    if (r.cf.auto) return { cls: 'ok', txt: 'Autorizada (despesa recorrente)' };
+    return { cls: 'ok', txt: `${ex ? 'Exclusão autorizada' : 'Autorizado'} por ${nome(r.cf.autor)} · ${quando(r.cf.ts)}` };
+  }
+  if (r.st === 'recusado') return { cls: 'rec', txt: `${ex ? 'Exclusão recusada' : 'Recusado'} por ${nome(o)} · ${quando(r.rc.ts)}` };
+  if (r.sup) return { cls: '', txt: 'Substituída por uma alteração mais recente' };
+  if (o === EU()) return { cls: 'pend', txt: ex ? 'Pedido de exclusão: aguardando sua confirmação' : 'Aguardando sua confirmação' };
+  return { cls: 'pend', txt: ex ? `Pedido de exclusão: esperando confirmação de ${nome(o)}` : `Esperando confirmação de ${nome(o)}` };
+}
+const stCurto = x => (x.st === 'pendente' ? (x.exclusaoPendente ? ' · ⏳ exclusão pendente' : ' · ⏳ pendente') : '');
+const retiravel = x => x.revs[0].autor === EU() && x.revs.every(r => r.st !== 'confirmado') && !x.exclusaoPendente;
+const ROT = { desc: 'descrição', valor: 'valor', cat: 'categoria', data: 'data', grupo: 'grupo', rec: 'repetição', nota: 'nota', forma: 'forma', de: 'quem pagou', para: 'quem recebeu' };
+function fmtCampo(k, v, D) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (k === 'valor') return R(v);
+  if (k === 'data') return dataLonga(v);
+  if (k === 'cat') return cat(v).r;
+  if (k === 'grupo') return (D.grupos.get(v) || {}).nome || '';
+  if (k === 'rec') return v === 'mensal' ? 'todo mês' : v === 'semanal' ? 'toda semana' : 'não repete';
+  if (k === 'de' || k === 'para') return nome(v);
+  return String(v);
+}
+function diffCampos(antes, depois, D) {
+  const out = [], vistos = new Set();
+  for (const k of Object.keys(depois || {})) {
+    if (k === 'origem' || k === 'retirar') continue;
+    if (canon(antes[k]) === canon(depois[k])) continue;
+    if (k === 'pagou' || k === 'pagouModo') { if (!vistos.has('p')) { vistos.add('p'); out.push('quem pagou: alterado'); } continue; }
+    if (k === 'devido' || k === 'ent' || k === 'tipo') { if (!vistos.has('d')) { vistos.add('d'); out.push('divisão: alterada'); } continue; }
+    out.push(`${ROT[k] || k}: ${fmtCampo(k, antes[k], D)} → ${fmtCampo(k, depois[k], D)}`);
+  }
+  return out;
+}
+function blocoStatus(x) {
+  const r = x.ultima, s = statusRev(r);
+  const bt = (r.st === 'pendente' && r.autor !== EU())
+    ? `<div class="acoes" style="margin-top:10px"><button class="btn-sec" data-a="recusarRev" data-rev="${esc(r.id)}">Recusar</button><button class="btn" data-a="confirmarRev" data-rev="${esc(r.id)}">Confirmar</button></div>` : '';
+  return `<div class="stbox ${s.cls}"><b>${esc(s.txt)}</b>${bt}</div>`;
+}
+function histHTML(D, x) {
+  const linhas = x.revs.map(r => {
+    const s = statusRev(r);
+    let q;
+    if (r.tipo === 'criar') q = 'criou';
+    else if (r.tipo === 'excluir') q = r.dados.retirar ? 'retirou o lançamento' : 'pediu para apagar';
+    else { const df = diffCampos(r.antes || {}, r.dados, D); q = 'editou' + (df.length ? ': ' + df.join('; ') : ''); }
+    return `<div class="hist"><p><b>${esc(quem(r.autor))}</b> ${esc(q)}</p><small>${esc(quando(r.ts))}</small><small class="st ${s.cls}">${esc(s.txt)}</small></div>`;
+  }).join('');
+  return `<h2 class="sec">Histórico</h2>${linhas}`;
+}
+function blocoDigital() {
+  const sup = suporteDigital(), ok = sup && !!data.cidLocal;
+  return `<h2>Confirmação por digital</h2>
+    <p class="explica">Cada despesa, alteração ou exclusão é assinada com a digital de quem fez e só vale depois que a outra pessoa confirma com a digital dela.</p>
+    <p class="estado ${ok ? 'ok' : 'falta'}">${!sup ? 'Este navegador não suporta' : ok ? 'Ativada neste aparelho' : 'Ainda não ativada'}</p>
+    ${!sup ? '' : `<button class="${ok ? 'btn-txt' : 'btn-sec'}" style="${ok ? 'color:var(--suave)' : ''}" data-a="ativarDigital">${ok ? 'Criar a chave de novo' : 'Ativar confirmação por digital'}</button>`}`;
+}
+
 function saldoGrupo(D, gid) {
   const b = { a: 0, b: 0 };
   for (const d of D.desp.values()) {
@@ -411,7 +621,7 @@ function gerarRecorrentes() {
   }
   if (novos) store.save(data);
 }
-function fim() { if (data) gerarRecorrentes(); render(); agendarSync(); }
+function fim() { if (data) gerarRecorrentes(); render(); agendarSync(); verificarTudo(); }
 
 /* ============================================================
    TELAS
@@ -469,7 +679,7 @@ function linhaDespesa(d) {
   if (net > 0) dir = `<span class="dir recebe"><small>você emprestou</small><b>${R(net)}</b></span>`;
   else if (net < 0) dir = `<span class="dir deve"><small>você deve</small><b>${R(-net)}</b></span>`;
   else dir = '<span class="dir quite"><small>sem saldo</small></span>';
-  return `<button class="linha" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}</span></span>${dir}</button>`;
+  return `<button class="linha${d.st === 'pendente' ? ' pend' : ''}" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}${stCurto(d)}</span></span>${dir}</button>`;
 }
 function textoPag(p) {
   if (p.de === EU()) return `Você pagou ${nome(p.para)}`;
@@ -478,7 +688,7 @@ function textoPag(p) {
 }
 function linhaPag(p) {
   const dm = diaMes(p.data);
-  return `<button class="linha pag" data-a="abrirPagamento" data-id="${esc(p.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">💸</span><span class="mid"><span class="t">${esc(textoPag(p))}</span><span class="s">${esc(p.forma || 'Pagamento')}</span></span><span class="dir quite"><b>${R(p.valor)}</b></span></button>`;
+  return `<button class="linha pag${p.st === 'pendente' ? ' pend' : ''}" data-a="abrirPagamento" data-id="${esc(p.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">💸</span><span class="mid"><span class="t">${esc(textoPag(p))}</span><span class="s">${esc(p.forma || 'Pagamento')}${stCurto(p)}</span></span><span class="dir quite"><b>${R(p.valor)}</b></span></button>`;
 }
 function listaGrupo(D, gid, q) {
   q = (q || '').trim().toLowerCase();
@@ -531,8 +741,10 @@ function telaDespesa(D, id) {
       <p class="meta">${esc(c.r)} · ${esc(dataLonga(d.data))}</p>
       <p class="meta">Adicionada por ${esc(quem(d.autor))} em ${esc(g ? g.nome : '')}${d.editado ? ' · editada' : ''}</p>
       <p class="meta">${esc(tipos[d.tipo] || '')}</p>${rec}${d.nota ? `<p style="margin-top:10px">${esc(d.nota)}</p>` : ''}</section>
+    ${blocoStatus(d)}
     ${pessoas}
-    <div class="acoes" style="padding:0 16px;margin:16px 0"><button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">Apagar</button></div>
+    <div class="acoes" style="padding:0 16px;margin:16px 0">${d.exclusaoPendente ? '' : `<button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">${retiravel(d) ? 'Retirar' : 'Apagar'}</button>`}</div>
+    ${histHTML(D, d)}
     <h2 class="sec">Comentários</h2>${coms || '<p class="vazio" style="padding:12px">Nenhum comentário.</p>'}
     <div class="escrever"><input id="coment" placeholder="Escreva um comentário" aria-label="Comentário" maxlength="300"><button class="btn" data-a="comentar" data-id="${esc(id)}">Enviar</button></div>`;
 }
@@ -547,7 +759,8 @@ function textoAtividade(e, D) {
       const sub = net > 0 ? `Você emprestou ${R(net)}` : net < 0 ? `Você deve ${R(-net)}` : 'Sem saldo para você';
       return { t: `${A} adicionou “${e.dados.desc}” em ${gn(e.dados.grupo)}.`, s: sub, cls: net > 0 ? 'recebe' : net < 0 ? 'deve' : '' };
     }
-    case 'despesa_edit': return { t: `${A} editou “${dd ? dd.desc : 'uma despesa'}”.` };
+    case 'despesa_edit': { const rv = D.rev.get(e.id); const df = rv ? diffCampos(rv.antes || {}, e.dados || {}, D) : []; return { t: `${A} editou “${dd ? dd.desc : 'uma despesa'}”.`, s: df.join(' · ') }; }
+    case 'recusa': { const rv = D.rev.get((e.dados || {}).rev); const it = rv ? (rv.k === 'd' ? D.desp.get(rv.item) : D.pag.get(rv.item)) : null; const nm = it ? (it.desc || textoPag(it)) : 'um lançamento'; return { t: `${A} recusou ${rv && rv.tipo === 'excluir' ? 'a exclusão de' : rv && rv.tipo === 'editar' ? 'a edição de' : ''} “${nm}”.` }; }
     case 'despesa_del': return { t: `${A} apagou “${dd ? dd.desc : 'uma despesa'}”.` };
     case 'pagamento': return { t: `${textoPag(e.dados)} ${R(e.dados.valor)}.`, s: e.dados.forma };
     case 'pagamento_del': return { t: `${A} apagou um pagamento.` };
@@ -562,7 +775,15 @@ function textoAtividade(e, D) {
 }
 function telaAtividade(D) {
   const itens = [...D.evs].reverse().slice(0, 150).map(e => ({ e, x: textoAtividade(e, D) })).filter(i => i.x.t);
-  const html = itens.map(({ e, x }) => `<div class="ativ"><p>${esc(x.t)}</p>${x.s ? `<small class="${x.cls || ''}">${esc(x.s)}</small>` : ''}<small>${esc(quando(e.ts))}</small></div>`).join('');
+  const html = itens.map(({ e, x }) => {
+    const r = D.rev.get(e.id); let st = '', cls = '', att = '';
+    if (r) {
+      const s = statusRev(r); cls = r.sup ? '' : s.cls; st = `<small class="st ${s.cls}">${esc(s.txt)}</small>`;
+      const it = r.k === 'd' ? D.desp.get(r.item) : D.pag.get(r.item);
+      if (it && !it.apagada && !it.apagado) att = ` data-a="${r.k === 'd' ? 'abrirDespesa' : 'abrirPagamento'}" data-id="${esc(r.item)}"`;
+    }
+    return `<div class="ativ ${cls}"${att}><p>${esc(x.t)}</p>${x.s ? `<small class="${x.cls || ''}">${esc(x.s)}</small>` : ''}${st}<small>${esc(quando(e.ts))}</small></div>`;
+  }).join('');
   return topo('Atividade') + (html || '<div class="vazio"><b>Nada por aqui ainda</b>Tudo o que vocês registrarem aparece neste histórico.</div>');
 }
 
@@ -606,6 +827,7 @@ function telaConta() {
     : `<label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>`;
   return topo('Conta') + `
   <div class="bloco">${blocoSync()}
+    ${blocoDigital()}
     <h2>Nomes</h2>
     <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
     <label class="campo"><span>Nome da outra pessoa</span><input id="c-b" value="${esc(nome(OUT()))}" maxlength="24"></label>
@@ -874,37 +1096,82 @@ const AC = {
   },
   novaDespesa(d) { abrirSheet(formDespesa(null, d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : 'casal'))); atualizarHint(); },
   editarDespesa(d) { const x = derivar().desp.get(d.id); if (x) { abrirSheet(formDespesa(x)); atualizarHint(); } },
-  salvarDespesa() {
-    const r = lerForm(sheetEstado.id);
+  async salvarDespesa() {
+    if (bioOcupado) return;
+    const sid = sheetEstado.id, novo = sheetEstado.novo;
+    const r = lerForm(sid);
     if (r.erro) return erroForm(r.erro);
-    if (sheetEstado.novo) addEvento({ id: sheetEstado.id, tipo: 'despesa', dados: r.dados });
-    else addEvento({ tipo: 'despesa_edit', alvo: sheetEstado.id, dados: r.dados });
-    fecharSheet(); toast('Despesa salva.'); fim();
+    bioOcupado = true;
+    try {
+      if (novo) await addEventoAssinado({ id: sid, tipo: 'despesa', dados: r.dados });
+      else await addEventoAssinado({ tipo: 'despesa_edit', alvo: sid, dados: r.dados });
+    } catch (er) { bioOcupado = false; return erroForm(msgBio(er)); }
+    bioOcupado = false;
+    fecharSheet(); toast(novo ? 'Despesa salva. Aguardando a outra pessoa.' : 'Alteração salva. Aguardando a outra pessoa.'); fim();
   },
   apagarDespesa(d) {
-    confirmar('Apagar esta despesa?', 'Apagar', () => {
-      const x = derivar().desp.get(d.id);
-      addEvento({ tipo: 'despesa_del', alvo: d.id });
-      ui.view = x ? { t: 'grupo', id: x.grupo } : null; toast('Despesa apagada.'); fim(); rolar();
+    const x = derivar().desp.get(d.id); if (!x) return;
+    const ret = retiravel(x);
+    confirmar(ret ? 'Retirar esta despesa? Ela ainda não foi confirmada, então some na hora.' : `Pedir para apagar esta despesa? Ela só some quando ${nome(OUT())} confirmar com a digital.`, ret ? 'Retirar' : 'Pedir exclusão', async () => {
+      try { await addEventoAssinado({ tipo: 'despesa_del', alvo: d.id, dados: ret ? { retirar: true } : {} }); }
+      catch (er) { return toast(msgBio(er)); }
+      if (ret) { ui.view = { t: 'grupo', id: x.grupo }; toast('Despesa retirada.'); } else toast('Exclusão solicitada. Aguardando a outra pessoa.');
+      fim(); rolar();
     });
+  },
+  async confirmarRev(d) {
+    if (bioOcupado) return;
+    const r = derivar().rev.get(d.rev); if (!r || r.autor === EU() || r.st !== 'pendente') return;
+    bioOcupado = true;
+    try {
+      const cid = await garantirChave();
+      const ass = await assinar({ item: r.item, id: r.id, tipo: r.tipo, autor: r.autor, dados: r.dados }, cid);
+      addEvento({ tipo: 'confirma', alvo: r.item, dados: { rev: r.id, ass } });
+    } catch (er) { bioOcupado = false; return toast(msgBio(er)); }
+    bioOcupado = false;
+    fecharSheet(); await verificarTudo(); toast('Autorizado.'); fim();
+  },
+  recusarRev(d) {
+    const r = derivar().rev.get(d.rev); if (!r || r.autor === EU() || r.st !== 'pendente') return;
+    confirmar('Recusar? A outra pessoa será avisada e o lançamento volta como estava antes.', 'Recusar', () => {
+      addEvento({ tipo: 'recusa', alvo: r.item, dados: { rev: r.id } });
+      toast('Recusado.'); fim();
+    });
+  },
+  async ativarDigital() {
+    try { await criarChave(); toast('Digital ativada neste aparelho.'); fim(); }
+    catch (er) { toast(msgBio(er)); }
   },
   comentar(d) {
     const el = $('#coment'), t = el.value.trim(); if (!t) return;
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   acertar(d) { abrirSheet(formPagamento(d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : ''))); preencherPagamento(); },
-  salvarPagamento() {
+  async salvarPagamento() {
+    if (bioOcupado) return;
     const valor = parseValor($('#p-valor').value);
     if (!(valor > 0)) return erroForm('Informe um valor maior que zero.');
     const [de, para] = $('#p-dir').value.split('>');
-    addEvento({ tipo: 'pagamento', dados: { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() } });
-    fecharSheet(); toast('Pagamento registrado.'); fim();
+    const dados = { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() };
+    bioOcupado = true;
+    try { await addEventoAssinado({ tipo: 'pagamento', dados }); }
+    catch (er) { bioOcupado = false; return erroForm(msgBio(er)); }
+    bioOcupado = false;
+    fecharSheet(); toast('Pagamento registrado. Aguardando a outra pessoa.'); fim();
   },
   abrirPagamento(d) {
-    const p = derivar().pag.get(d.id); if (!p) return;
-    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button><button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">Apagar</button></div>`);
+    const D = derivar(), p = D.pag.get(d.id); if (!p || p.apagado) return;
+    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
   },
-  apagarPagamento(d) { confirmar('Apagar este pagamento?', 'Apagar', () => { addEvento({ tipo: 'pagamento_del', alvo: d.id }); toast('Pagamento apagado.'); fim(); }); },
+  apagarPagamento(d) {
+    const p = derivar().pag.get(d.id); if (!p) return;
+    const ret = retiravel(p);
+    confirmar(ret ? 'Retirar este pagamento? Ele ainda não foi confirmado, então some na hora.' : `Pedir para apagar este pagamento? Ele só some quando ${nome(OUT())} confirmar com a digital.`, ret ? 'Retirar' : 'Pedir exclusão', async () => {
+      try { await addEventoAssinado({ tipo: 'pagamento_del', alvo: d.id, dados: ret ? { retirar: true } : {} }); }
+      catch (er) { return toast(msgBio(er)); }
+      toast(ret ? 'Pagamento retirado.' : 'Exclusão solicitada. Aguardando a outra pessoa.'); fim();
+    });
+  },
   novoGrupo() { abrirSheet(formGrupo(null)); },
   escolherTipo(d) {
     const t = tiposAtivos(derivar()).find(x => x.id === d.k); if (!t) return;
@@ -1010,7 +1277,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && da
    eventos pelo id. Não usa login do Google, então nunca expira.
    ============================================================ */
 try { localStorage.removeItem('equilibra:token'); } catch (e) {}
-let sincronizando = false, syncT = null;
+let sincronizando = false, syncT = null, bioOcupado = false;
 
 /* Quem usava o Drive mantém o mesmo espaço; só falta informar endereço e chave. */
 if (data && data.sync && data.sync.arquivos) {
@@ -1071,7 +1338,7 @@ function msgErro(e) {
 }
 function agendarSync() {
   if (!syncAtiva()) return;
-  clearTimeout(syncT); syncT = setTimeout(() => sincronizar(false), 2500);
+  clearTimeout(syncT); syncT = setTimeout(() => sincronizar(false), 500);
 }
 async function sincronizar(interativo) {
   if (!syncAtiva() || sincronizando) return;
@@ -1090,6 +1357,7 @@ async function sincronizar(interativo) {
     const t = msgErro(e); setSync('erro', t); if (interativo && t) toast(t);
   } finally {
     sincronizando = false;
+    if (novos) verificarTudo();
     if (novos || ui.tab === 'conta' || ui.sync.estado !== 'ok') renderSeguro();
   }
 }
@@ -1169,6 +1437,8 @@ render();
 if (data && data.sync) sincronizar(false);
 
 window.addEventListener('online', () => { if (data) agendarSync(); });
+setInterval(() => { if (!document.hidden && syncAtiva() && !sincronizando) sincronizar(false); }, 10000);
+if (data) verificarTudo();
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 })();
