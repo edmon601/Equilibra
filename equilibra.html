@@ -169,13 +169,25 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
 @media (min-width:520px){body{padding:0}#app{box-shadow:0 0 0 1px var(--linha)}}
 .ativ[data-a]{cursor:pointer}
+/* cores: amarelo = esperando confirmação; verde = a favor de quem usa o aparelho; vermelho = contra */
 .ativ.pend,.linha.pend,.linha.pag.pend{background:#fff6d6}
-.ativ.ok{background:#e5f5ec}
-.ativ.rec{background:#fdece4}
+.ativ.ativo{background:var(--recebe-bg)}
+.ativ.passivo{background:var(--deve-bg)}
+.ativ{position:relative}
+.ativ.pend{padding-right:44px}
+.ativ .ampulheta{position:absolute;right:14px;bottom:10px;font-size:18px;line-height:1}
+.faixa button{position:relative}
+.faixa button.on{border-color:var(--verde);background:var(--verde-claro);color:var(--verde-esc)}
+.faixa button.ponto::after{content:"";position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:var(--deve);border:2px solid #fff}
+.qr{display:flex;justify-content:center;margin:14px 0 6px}
+.qr svg{width:min(270px,72vw);height:auto;border-radius:8px;transition:opacity .3s}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .st{font-weight:700}
-.st.pend{color:#8a6400}.st.ok{color:var(--recebe)}.st.rec{color:var(--deve)}
+.st.pend{color:#8a6400}.st.ok{color:var(--verde-esc)}.st.rec{color:var(--suave)}
+.dir.espera{color:#8a6400}
+.banner .pendente{margin-top:12px;padding:9px 12px;border-radius:10px;background:#fff6d6;color:#6e5000;font-size:14px;line-height:1.35}
 .stbox{margin:12px 16px;padding:12px 14px;border-radius:12px;background:var(--fundo)}
-.stbox.pend{background:#fff6d6;color:#6e5000}.stbox.ok{background:var(--recebe-bg);color:var(--recebe)}.stbox.rec{background:var(--deve-bg);color:var(--deve)}
+.stbox.pend{background:#fff6d6;color:#6e5000}.stbox.ok{background:var(--fundo);color:var(--verde-esc)}.stbox.rec{background:var(--fundo);color:var(--suave)}
 .hist{padding:10px 16px;border-bottom:1px solid var(--linha)}
 .hist small{display:block;color:var(--suave)}
 </style>
@@ -209,6 +221,7 @@ let data = store.load();
 const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' } };
 let sheetEstado = null;
 let confirmCb = null;
+let pararSheet = null; /* desliga câmera ou temporizador da folha aberta */
 
 /* ============================================================
    UTILITÁRIOS
@@ -325,18 +338,20 @@ function addEvento(e) {
   data.eventos.push(e);
   store.save(data);
 }
+/* conta qualquer despesa ou pagamento não apagado, confirmado ou não */
+const grupoTemConteudo = (desp, pag, gid) => [...desp.values(), ...pag.values()].some(x => !x.apagada && !x.apagado && (x.grupo === gid || (x.proj && x.proj.grupo === gid)));
 function derivar() {
   const evs = [...data.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
   const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
   const desp = new Map(), pag = new Map(), coms = [], tipos = new Map();
-  const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), verif = data.verif || {};
+  const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), gdels = new Map(), verif = data.verif || {};
   const nova = (e, tipo, item, k) => { const r = { id: e.id, item, k, tipo, autor: e.autor, ts: e.ts, dados: e.dados || {}, assin: e.assin }; rev.set(e.id, r); return r; };
   const juntar = (m, k, e) => { if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
   for (const e of evs) {
     switch (e.tipo) {
       case 'grupo': grupos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
       case 'grupo_edit': if (grupos.has(e.alvo)) Object.assign(grupos.get(e.alvo), e.dados); break;
-      case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) g.apagado = true; break; }
+      case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) juntar(gdels, e.alvo, nova(e, 'excluir', e.alvo, 'g')); break; }
       case 'tgrupo': tipos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
       case 'tgrupo_del': if (tipos.has(e.alvo)) tipos.get(e.alvo).apagado = true; break;
       case 'despesa': itens.set(e.id, { k: 'd', id: e.id, revs: [nova(e, 'criar', e.id, 'd')] }); break;
@@ -349,32 +364,50 @@ function derivar() {
       case 'comentario': coms.push({ id: e.id, alvo: e.alvo, texto: e.dados.texto, autor: e.autor, ts: e.ts }); break;
     }
   }
+  /* uma versão vale quando a OUTRA pessoa confirma (com a digital verificada) ou quando há confirmação automática */
+  const marcar = (r, auto) => {
+    const o = r.autor === 'a' ? 'b' : 'a';
+    const cf = (confs.get(r.id) || []).find(x => x.autor === o) || (auto ? { auto: true, autor: o, ts: r.ts, ...auto } : null);
+    const rc = (recs.get(r.id) || []).find(x => x.autor === o);
+    r.cf = cf; r.rc = rc; r.st = cf ? 'confirmado' : rc ? 'recusado' : 'pendente';
+  };
   for (const it of itens.values()) {
-    for (const r of it.revs) {
-      const o = r.autor === 'a' ? 'b' : 'a';
-      const cf = (confs.get(r.id) || []).find(x => x.autor === o) || (r.tipo === 'criar' && r.dados.origem ? { auto: true, autor: o, ts: r.ts } : null);
-      const rc = (recs.get(r.id) || []).find(x => x.autor === o);
-      r.cf = cf; r.rc = rc; r.st = cf ? 'confirmado' : rc ? 'recusado' : 'pendente';
-    }
+    for (const r of it.revs) marcar(r, r.tipo === 'criar' && r.dados.origem ? {} : null);
     for (const r of it.revs) {
       if (r.tipo === 'excluir' && r.st === 'pendente' && r.dados.retirar && r.autor === it.revs[0].autor && it.revs.every(q => q === r || q.st !== 'confirmado')) {
         r.st = 'confirmado'; r.cf = { auto: true, retirada: true, autor: r.autor, ts: r.ts };
       }
     }
-    let ef = null, ed = false; const ativas = [];
+    /* ef = como fica se tudo o que está pendente for aceito; vale = o que já foi confirmado (é o que entra no saldo) */
+    let ef = null, ed = false, vale = null, edVale = false; const ativas = [];
     for (const r of it.revs) {
       r.antes = ef;
       if (r.st === 'recusado') continue;
       ativas.push(r);
       if (r.tipo === 'criar') ef = { ...r.dados };
       else if (r.tipo === 'editar' && ef) { ef = { ...ef, ...r.dados }; ed = true; }
+      /* confirmar uma versão aprova também as versões anteriores que ela substituiu */
+      if (r.st === 'confirmado' && r.tipo !== 'excluir' && ef) { vale = ef; edVale = ed; }
     }
     if (!ef) continue;
     const L = ativas[ativas.length - 1];
     ativas.forEach(r => { r.sup = r !== L && r.st === 'pendente'; });
     const apagada = L.tipo === 'excluir' && L.st === 'confirmado';
-    const base = { id: it.id, ...ef, editado: ed, autor: it.revs[0].autor, ts: it.revs[0].ts, st: L.st, ultima: L, revs: it.revs, exclusaoPendente: L.tipo === 'excluir' && L.st === 'pendente' };
+    const exclusaoPendente = L.tipo === 'excluir' && L.st === 'pendente';
+    const base = { id: it.id, ...(vale || ef), editado: vale ? edVale : ed, autor: it.revs[0].autor, ts: it.revs[0].ts, st: L.st, ultima: L, revs: it.revs, exclusaoPendente,
+      valido: !!vale, conta: vale, proj: exclusaoPendente ? null : ef, atual: ef, proposta: vale && ef !== vale ? ef : null };
     if (it.k === 'd') desp.set(it.id, { ...base, apagada }); else pag.set(it.id, { ...base, apagado: apagada });
+  }
+  /* apagar grupo: se tem despesas ou pagamentos, só vale quando a outra pessoa confirma com a digital;
+     vazio, some na hora. "Vazio" é calculado aqui, nunca vem do evento. */
+  for (const [gid, dels] of gdels) {
+    const g = grupos.get(gid);
+    const vazio = !grupoTemConteudo(desp, pag, gid);
+    dels.forEach(r => marcar(r, vazio ? { vazio: true } : null));
+    const ativas = dels.filter(r => r.st !== 'recusado'), L = ativas[ativas.length - 1];
+    ativas.forEach(r => { r.sup = r !== L && r.st === 'pendente'; });
+    if (!L) continue;
+    if (L.st === 'confirmado') g.apagado = true; else g.exclusao = L;
   }
   return { evs, grupos, desp, pag, coms, tipos, rev };
 }
@@ -384,7 +417,7 @@ function derivar() {
    Cada versão de uma despesa/pagamento é assinada por quem a fez
    e confirmada (assinada) pela outra pessoa com a digital.
    ============================================================ */
-const REVT = { despesa: 'criar', despesa_edit: 'editar', despesa_del: 'excluir', pagamento: 'criar', pagamento_del: 'excluir' };
+const REVT = { despesa: 'criar', despesa_edit: 'editar', despesa_del: 'excluir', pagamento: 'criar', pagamento_del: 'excluir', grupo_del: 'excluir' };
 const revItem = e => (e.tipo === 'despesa' || e.tipo === 'pagamento') ? e.id : e.alvo;
 const revDe = e => ({ item: revItem(e), id: e.id, tipo: REVT[e.tipo], autor: e.autor, dados: e.dados || {} });
 const suporteDigital = () => !!(window.isSecureContext && window.PublicKeyCredential && navigator.credentials && window.crypto && crypto.subtle);
@@ -489,6 +522,7 @@ function statusRev(r) {
   const o = r.autor === 'a' ? 'b' : 'a', ex = r.tipo === 'excluir';
   if (r.st === 'confirmado') {
     if (r.cf.retirada) return { cls: 'ok', txt: 'Retirado por quem criou' };
+    if (r.cf.vazio) return { cls: 'ok', txt: 'Grupo vazio: apagado sem precisar de confirmação' };
     if (r.cf.auto) return { cls: 'ok', txt: 'Autorizada (despesa recorrente)' };
     return { cls: 'ok', txt: `${ex ? 'Exclusão autorizada' : 'Autorizado'} por ${nome(r.cf.autor)} · ${quando(r.cf.ts)}` };
   }
@@ -497,7 +531,7 @@ function statusRev(r) {
   if (o === EU()) return { cls: 'pend', txt: ex ? 'Pedido de exclusão: aguardando sua confirmação' : 'Aguardando sua confirmação' };
   return { cls: 'pend', txt: ex ? `Pedido de exclusão: esperando confirmação de ${nome(o)}` : `Esperando confirmação de ${nome(o)}` };
 }
-const stCurto = x => (x.st === 'pendente' ? (x.exclusaoPendente ? ' · ⏳ exclusão pendente' : ' · ⏳ pendente') : '');
+const stCurto = x => (x.st !== 'pendente' ? '' : x.exclusaoPendente ? ' · ⏳ exclusão pendente' : x.valido ? ' · ⏳ alteração pendente' : ' · ⏳ aguardando confirmação');
 const retiravel = x => x.revs[0].autor === EU() && x.revs.every(r => r.st !== 'confirmado') && !x.exclusaoPendente;
 const ROT = { desc: 'descrição', valor: 'valor', cat: 'categoria', data: 'data', grupo: 'grupo', rec: 'repetição', nota: 'nota', forma: 'forma', de: 'quem pagou', para: 'quem recebeu' };
 function fmtCampo(k, v, D) {
@@ -521,11 +555,17 @@ function diffCampos(antes, depois, D) {
   }
   return out;
 }
-function blocoStatus(x) {
+function blocoStatus(x, D) {
   const r = x.ultima, s = statusRev(r);
   const bt = (r.st === 'pendente' && r.autor !== EU())
     ? `<div class="acoes" style="margin-top:10px"><button class="btn-sec" data-a="recusarRev" data-rev="${esc(r.id)}">Recusar</button><button class="btn" data-a="confirmarRev" data-rev="${esc(r.id)}">Confirmar</button></div>` : '';
-  return `<div class="stbox ${s.cls}"><b>${esc(s.txt)}</b>${bt}</div>`;
+  let extra = '';
+  if (r.st === 'pendente' && !x.valido) extra = '<p class="explica" style="color:inherit;margin:6px 0 0">Ainda não entra no saldo.</p>';
+  else if (x.proposta && D) {
+    const df = diffCampos(x.conta, x.proposta, D);
+    extra = `<p style="margin-top:8px"><b>Mudança pendente:</b></p>${df.map(t => `<p>${esc(t)}</p>`).join('')}<p class="explica" style="color:inherit;margin:6px 0 0">Até ser confirmada, vale o que está acima.</p>`;
+  }
+  return `<div class="stbox ${s.cls}"><b>${esc(s.txt)}</b>${extra}${bt}</div>`;
 }
 function histHTML(D, x) {
   const linhas = x.revs.map(r => {
@@ -546,17 +586,46 @@ function blocoDigital() {
     ${!sup ? '' : `<button class="${ok ? 'btn-txt' : 'btn-sec'}" style="${ok ? 'color:var(--suave)' : ''}" data-a="ativarDigital">${ok ? 'Criar a chave de novo' : 'Ativar confirmação por digital'}</button>`}`;
 }
 
-function saldoGrupo(D, gid) {
+/* saldo só com o que foi confirmado; com proj = true, como ficaria se tudo o que está pendente fosse confirmado */
+function saldoGrupo(D, gid, proj) {
   const b = { a: 0, b: 0 };
   for (const d of D.desp.values()) {
-    if (d.apagada || d.grupo !== gid) continue;
-    b.a += d.pagou.a - d.devido.a; b.b += d.pagou.b - d.devido.b;
+    const v = d.apagada ? null : proj ? d.proj : d.conta;
+    if (!v || v.grupo !== gid) continue;
+    b.a += v.pagou.a - v.devido.a; b.b += v.pagou.b - v.devido.b;
   }
   for (const p of D.pag.values()) {
-    if (p.apagado || p.grupo !== gid) continue;
-    b[p.de] += p.valor; b[p.para] -= p.valor;
+    const v = p.apagado ? null : proj ? p.proj : p.conta;
+    if (!v || v.grupo !== gid) continue;
+    b[v.de] += v.valor; b[v.para] -= v.valor;
   }
   return b;
+}
+function contarPendentes(D, gid) {
+  let n = 0;
+  for (const x of [...D.desp.values(), ...D.pag.values()]) if (!x.apagada && !x.apagado && x.grupo === gid && x.st === 'pendente') n++;
+  return n;
+}
+function avisoPendentes(D, gids) {
+  let n = 0, s = 0;
+  for (const g of gids) { n += contarPendentes(D, g); s += saldoGrupo(D, g, true)[EU()]; }
+  if (!n) return '';
+  return `<p class="pendente">⏳ ${n} ${n > 1 ? 'lançamentos esperando' : 'lançamento esperando'} confirmação<br>Se ${n > 1 ? 'forem confirmados' : 'for confirmado'}: ${esc(fraseSaldo(s).t)}</p>`;
+}
+/* quanto uma versão muda o saldo de quem usa este aparelho (pagamentos são neutros) */
+function efeitoRev(r) {
+  if (r.k !== 'd' || (r.cf && r.cf.retirada)) return 0;
+  const net = v => (v && v.pagou && v.devido ? v.pagou[EU()] - v.devido[EU()] : 0);
+  if (r.tipo === 'criar') return net(r.dados);
+  if (r.tipo === 'editar') return net({ ...(r.antes || {}), ...r.dados }) - net(r.antes);
+  return -net(r.antes);
+}
+/* cores da atividade: amarelo = esperando confirmação; verde = a seu favor; vermelho = contra você */
+function corRev(r) {
+  if (r.st === 'pendente' && !r.sup) return 'pend';
+  if (r.st !== 'confirmado') return '';
+  const v = efeitoRev(r);
+  return v > 0 ? 'ativo' : v < 0 ? 'passivo' : '';
 }
 function gruposAtivos(D) {
   return [...D.grupos.values()].filter(g => !g.apagado).sort((x, y) => (y.padrao ? 1 : 0) - (x.padrao ? 1 : 0) || y.ts - x.ts);
@@ -607,7 +676,7 @@ function gerarRecorrentes() {
   const ids = new Set(data.eventos.map(e => e.id));
   const h = hoje(); let novos = 0;
   for (const d of D.desp.values()) {
-    if (d.apagada || !d.rec || d.origem) continue;
+    if (d.apagada || !d.valido || !d.rec || d.origem) continue; /* só repete despesas já confirmadas */
     for (let i = 1; i < 600; i++) {
       const dt = d.rec === 'mensal' ? addMeses(d.data, i) : addDias(d.data, 7 * i);
       if (dt > h) break;
@@ -642,9 +711,8 @@ function telaBoas() {
   <label class="campo"><span>Nome da outra pessoa</span><input id="n-b" maxlength="24"></label>
   <button class="btn cheio" style="margin:20px 0 0;width:100%" data-a="comecar">Começar</button>
   <div class="ou">ou</div>
-  <label class="campo"><span>Código enviado pela outra pessoa</span><textarea id="s-cod" rows="3" autocomplete="off" placeholder="EQ1-..."></textarea></label>
-  <button class="btn-sec cheio" style="margin:0;width:100%" data-a="entrarEspaco">Entrar no espaço da outra pessoa</button>
-  <p class="explica" style="margin-top:10px">Use esta opção no celular da segunda pessoa, depois que a primeira ativar a sincronização e enviar o código.</p></main>`;
+  <button class="btn-sec cheio" style="margin:0;width:100%" data-a="escanear">📷 Escanear QR da outra pessoa</button>
+  <p class="explica" style="margin-top:10px">Use esta opção no celular da segunda pessoa. No celular da primeira, abra Conta › “Conectar o celular de…” para mostrar o QR. Também dá para ler o QR com a câmera do celular.</p></main>`;
 }
 
 function navInferior() {
@@ -654,14 +722,16 @@ function navInferior() {
 
 function telaGrupos(D) {
   let total = 0;
-  const linhas = gruposAtivos(D).map(g => {
+  const gs = gruposAtivos(D);
+  const linhas = gs.map(g => {
     const s = saldoGrupo(D, g.id)[EU()]; total += s;
-    const f = fraseSaldo(s);
-    return `<button class="linha" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${iconeHTML(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span>${s ? `<span class="s ${f.cls}">${esc(f.curto)}</span>` : ''}</span><span aria-hidden="true" class="quite">›</span></button>`;
+    const f = fraseSaldo(s), n = contarPendentes(D, g.id);
+    const pend = g.exclusao ? '<span class="st pend">⏳ exclusão do grupo pendente</span>' : n ? `<span class="st pend">⏳ ${n} ${n > 1 ? 'pendentes' : 'pendente'}</span>` : '';
+    return `<button class="linha${g.exclusao ? ' pend' : ''}" data-a="abrirGrupo" data-id="${esc(g.id)}"><span class="ico" aria-hidden="true">${iconeHTML(g.icone || '📌')}</span><span class="mid"><span class="t">${esc(g.nome)}</span>${s || pend ? `<span class="s">${s ? `<span class="${f.cls}">${esc(f.curto)}</span>` : ''}${s && pend ? ' · ' : ''}${pend}</span>` : ''}</span><span aria-hidden="true" class="quite">›</span></button>`;
   }).join('');
   const f = fraseSaldo(total);
   return topoMarca() +
-    `<section class="banner ${f.cls}"><p class="rotulo">Saldo geral</p><p class="grande">${esc(f.t)}</p>${total ? '<button class="btn" data-a="acertar">Acertar contas</button>' : ''}</section>
+    `<section class="banner ${f.cls}"><p class="rotulo">Saldo geral</p><p class="grande">${esc(f.t)}</p>${avisoPendentes(D, gs.map(g => g.id))}${total ? '<button class="btn" data-a="acertar">Acertar contas</button>' : ''}</section>
     <h2 class="sec">Grupos</h2>${linhas}
     <button class="btn-sec cheio" data-a="novoGrupo">Criar grupo</button>`;
 }
@@ -676,7 +746,8 @@ function linhaDespesa(d) {
   const c = cat(d.cat), dm = diaMes(d.data);
   const net = d.pagou[EU()] - d.devido[EU()];
   let dir;
-  if (net > 0) dir = `<span class="dir recebe"><small>você emprestou</small><b>${R(net)}</b></span>`;
+  if (!d.valido && net) dir = `<span class="dir espera"><small>${net > 0 ? 'a receber' : 'a pagar'} se confirmar</small><b>${R(Math.abs(net))}</b></span>`;
+  else if (net > 0) dir = `<span class="dir recebe"><small>você emprestou</small><b>${R(net)}</b></span>`;
   else if (net < 0) dir = `<span class="dir deve"><small>você deve</small><b>${R(-net)}</b></span>`;
   else dir = '<span class="dir quite"><small>sem saldo</small></span>';
   return `<button class="linha${d.st === 'pendente' ? ' pend' : ''}" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}${stCurto(d)}</span></span>${dir}</button>`;
@@ -717,11 +788,20 @@ function listaGrupo(D, gid, q) {
   }
   return out;
 }
+function blocoExclusaoGrupo(g) {
+  const r = g.exclusao, meu = r.autor === EU();
+  const txt = meu
+    ? `Você pediu para apagar este grupo. Ele e tudo o que há nele só somem quando ${nome(OUT())} confirmar com a digital.`
+    : `${nome(r.autor)} pediu para apagar este grupo. Se você confirmar, ele some com todas as despesas e pagamentos que há nele, e os saldos deste grupo deixam de contar.`;
+  const bt = meu ? '' : `<div class="acoes" style="margin-top:10px"><button class="btn-sec" data-a="recusarRev" data-rev="${esc(r.id)}">Recusar</button><button class="btn perigo" data-a="confirmarRev" data-rev="${esc(r.id)}">Confirmar exclusão</button></div>`;
+  return `<div class="stbox pend"><b>⏳ Pedido de exclusão do grupo</b><p style="margin-top:6px">${esc(txt)}</p>${bt}</div>`;
+}
 function telaGrupo(D, id) {
   const g = D.grupos.get(id);
   const f = fraseSaldo(saldoGrupo(D, id)[EU()]);
   return topo(g.nome, { voltar: true, acao: 'menuGrupo', rotulo: 'Opções do grupo' }) +
-    `<section class="banner ${f.cls}"><p class="grande">${esc(f.t)}</p></section>
+    `<section class="banner ${f.cls}"><p class="grande">${esc(f.t)}</p>${avisoPendentes(D, [id])}</section>
+    ${g.exclusao ? blocoExclusaoGrupo(g) : ''}
     <div class="faixa"><button data-a="acertar" data-g="${esc(id)}">Acertar contas</button><button data-a="totais" data-g="${esc(id)}">Totais</button><button data-a="csv" data-g="${esc(id)}">Exportar CSV</button></div>
     <div class="busca"><input id="busca" type="search" placeholder="Buscar despesas" aria-label="Buscar despesas" value="${esc(ui.busca)}"></div>
     <div id="lista">${listaGrupo(D, id, ui.busca)}</div>`;
@@ -741,7 +821,7 @@ function telaDespesa(D, id) {
       <p class="meta">${esc(c.r)} · ${esc(dataLonga(d.data))}</p>
       <p class="meta">Adicionada por ${esc(quem(d.autor))} em ${esc(g ? g.nome : '')}${d.editado ? ' · editada' : ''}</p>
       <p class="meta">${esc(tipos[d.tipo] || '')}</p>${rec}${d.nota ? `<p style="margin-top:10px">${esc(d.nota)}</p>` : ''}</section>
-    ${blocoStatus(d)}
+    ${blocoStatus(d, D)}
     ${pessoas}
     <div class="acoes" style="padding:0 16px;margin:16px 0">${d.exclusaoPendente ? '' : `<button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">${retiravel(d) ? 'Retirar' : 'Apagar'}</button>`}</div>
     ${histHTML(D, d)}
@@ -766,51 +846,63 @@ function textoAtividade(e, D) {
     case 'pagamento_del': return { t: `${A} apagou um pagamento.` };
     case 'grupo': return { t: `${A} criou o grupo “${e.dados.nome}”.` };
     case 'grupo_edit': return { t: `${A} editou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
-    case 'grupo_del': return { t: `${A} apagou o grupo “${(D.grupos.get(e.alvo) || {}).nome || ''}”.` };
+    case 'grupo_del': { const r = D.rev.get(e.id), gn2 = (D.grupos.get(e.alvo) || {}).nome || ''; return { t: r && r.cf && r.cf.vazio ? `${A} apagou o grupo vazio “${gn2}”.` : `${A} pediu para apagar o grupo “${gn2}” e tudo o que há nele.` }; }
     case 'tgrupo': return { t: `${A} criou o tipo “${e.dados.nome}”.` };
     case 'tgrupo_del': return { t: `${A} apagou um tipo de grupo.` };
     case 'comentario': return { t: `${A} comentou em “${dd ? dd.desc : 'uma despesa'}”.`, s: `“${e.dados.texto}”` };
   }
   return { t: '' };
 }
+const esperando = r => r.st === 'pendente' && !r.sup;
+/* versões que esperam a confirmação de quem usa este aparelho */
+const esperamVoce = D => [...D.rev.values()].filter(r => esperando(r) && r.autor !== EU()).length;
 function telaAtividade(D) {
-  const itens = [...D.evs].reverse().slice(0, 150).map(e => ({ e, x: textoAtividade(e, D) })).filter(i => i.x.t);
+  let evs = [...D.evs].reverse();
+  if (ui.soPend) evs = evs.filter(e => { const r = D.rev.get(e.id); return r && esperando(r); });
+  const itens = evs.slice(0, 150).map(e => ({ e, x: textoAtividade(e, D) })).filter(i => i.x.t);
+  const nv = esperamVoce(D);
+  const filtro = `<div class="faixa" style="padding-top:12px"><button data-a="filtrarPend" class="${ui.soPend ? 'on' : ''}${nv ? ' ponto' : ''}" aria-pressed="${!!ui.soPend}">⏳ Só pendentes${nv ? `<span class="sr"> (${nv} esperando você)</span>` : ''}</button></div>`;
   const html = itens.map(({ e, x }) => {
     const r = D.rev.get(e.id); let st = '', cls = '', att = '';
     if (r) {
-      const s = statusRev(r); cls = r.sup ? '' : s.cls; st = `<small class="st ${s.cls}">${esc(s.txt)}</small>`;
+      const s = statusRev(r); cls = corRev(r); st = `<small class="st ${s.cls}">${esc(s.txt)}</small>`;
+      const v = r.tipo !== 'criar' && (r.st === 'confirmado' || (r.st === 'pendente' && !r.sup)) ? efeitoRev(r) : 0;
+      if (v) st = `<small class="${v > 0 ? 'recebe' : 'deve'}">${r.st === 'confirmado' ? 'Efeito no seu saldo' : 'Se confirmado, efeito no seu saldo'}: ${v > 0 ? '+' : '−'}${R(Math.abs(v))}</small>` + st;
       const it = r.k === 'd' ? D.desp.get(r.item) : D.pag.get(r.item);
-      if (it && !it.apagada && !it.apagado) att = ` data-a="${r.k === 'd' ? 'abrirDespesa' : 'abrirPagamento'}" data-id="${esc(r.item)}"`;
+      if (r.k === 'g') { const g = D.grupos.get(r.item); if (g && !g.apagado) att = ` data-a="abrirGrupo" data-id="${esc(r.item)}"`; }
+      else if (it && !it.apagada && !it.apagado) att = ` data-a="${r.k === 'd' ? 'abrirDespesa' : 'abrirPagamento'}" data-id="${esc(r.item)}"`;
     }
-    return `<div class="ativ ${cls}"${att}><p>${esc(x.t)}</p>${x.s ? `<small class="${x.cls || ''}">${esc(x.s)}</small>` : ''}${st}<small>${esc(quando(e.ts))}</small></div>`;
+    const amp = cls === 'pend' ? '<span class="ampulheta" aria-hidden="true">⏳</span>' : '';
+    return `<div class="ativ ${cls}"${att}><p>${esc(x.t)}</p>${x.s ? `<small class="${x.cls || ''}">${esc(x.s)}</small>` : ''}${st}<small>${esc(quando(e.ts))}</small>${amp}</div>`;
   }).join('');
-  return topo('Atividade') + (html || '<div class="vazio"><b>Nada por aqui ainda</b>Tudo o que vocês registrarem aparece neste histórico.</div>');
+  const vazio = ui.soPend
+    ? '<div class="vazio"><b>Nada esperando confirmação</b>Está tudo em dia.</div>'
+    : '<div class="vazio"><b>Nada por aqui ainda</b>Tudo o que vocês registrarem aparece neste histórico.</div>';
+  return topo('Atividade') + filtro + (html || vazio);
 }
 
 function blocoSync() {
-  const s = data.sync;
-  if (!s || !s.url) {
+  const s = data.sync, ou = esc(nome(OUT()));
+  if (!syncAtiva()) {
     return `<h2>Sincronização entre os dois celulares</h2>
-    <p class="explica">Os dois celulares passam a ver os mesmos gastos, sem entrar no Google e sem expirar.</p>
-    <label class="campo"><span>Endereço do Apps Script (termina em /exec)</span><input id="s-url" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec"></label>
-    <label class="campo"><span>Chave secreta</span><input id="s-chave" autocomplete="off" placeholder="a mesma que está no código do Apps Script"></label>
+    <p class="explica">Os dois celulares passam a ver os mesmos gastos, sem entrar no Google e sem expirar. Só uma pessoa faz isto, uma vez: cole o endereço do Apps Script e ative. Depois conecte o outro celular com um QR.</p>
+    <label class="campo"><span>Endereço do Apps Script (termina em /exec)</span><input id="s-url" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec" value="${esc((s && s.url) || '')}"></label>
     <button class="btn" data-a="ativarSync">Ativar sincronização</button>
-    <h2 style="margin-top:22px">Já recebeu um código?</h2>
-    <p class="explica">Se a outra pessoa já ativou, cole aqui o código que ela enviou. Não precisa de mais nada.</p>
-    <label class="campo"><textarea id="s-cod" rows="3" autocomplete="off" placeholder="EQ1-..."></textarea></label>
-    <button class="btn-sec" data-a="entrarEspaco">Conectar com o código</button>`;
+    <h2 style="margin-top:22px">A outra pessoa já ativou?</h2>
+    <p class="explica">Peça para ela abrir Conta › “Conectar o celular de…” e leia o QR que aparecer.</p>
+    <button class="btn-sec" data-a="escanear">📷 Escanear QR</button>`;
   }
-  const ou = OUT();
   const ult = s.ultima ? quando(s.ultima) : 'ainda não sincronizou';
   const erro = ui.sync.estado === 'erro' && ui.sync.msg;
+  const pedido = ui.pedido ? `<div class="stbox pend" style="margin:10px 0"><b>📲 Um celular quer entrar como ${ou}</b><div class="acoes" style="margin-top:10px"><button class="btn-sec" data-a="recusarConexao">Recusar</button><button class="btn" data-a="verPedidoConexao">Ver pedido</button></div></div>` : '';
   return `<h2>Sincronização entre os dois celulares</h2>
     <p class="estado ${erro ? 'falta' : 'ok'}">${erro ? 'Com problema' : 'Ativa'}</p>
     <p class="explica">Última sincronização: ${esc(ult)}${ui.sync.msg ? ' · ' + esc(ui.sync.msg) : ''}</p>
+    ${pedido}
     <button class="btn-sec" data-a="sync">Sincronizar agora</button>
-    <p class="explica" style="margin-top:14px">Para ${esc(nome(ou))} entrar, envie este código (pelo WhatsApp, por exemplo) e peça para colar na tela inicial do app, em “Entrar no espaço da outra pessoa”.</p>
-    <label class="campo"><textarea id="s-cod" rows="3" readonly>${esc(codigoConvite())}</textarea></label>
-    <button class="btn-sec" data-a="copiarCodigo">Copiar código</button>
-    <button class="btn-txt" style="margin-top:8px;color:var(--suave)" data-a="trocarConexao">Trocar endereço ou chave</button>`;
+    <button class="btn" style="margin-top:12px" data-a="convidar">📲 Conectar o celular de ${ou}</button>
+    <p class="explica" style="margin-top:6px">Mostra um QR para ${ou} ler. Você autoriza com a sua digital.</p>
+    <button class="btn-txt" style="margin-top:8px;color:var(--suave)" data-a="desconectar">Desconectar este celular</button>`;
 }
 function blocoTipos() {
   const meus = [...derivar().tipos.values()].filter(t => !t.apagado);
@@ -846,13 +938,16 @@ function telaConta() {
 /* ============================================================
    FORMULÁRIOS (folhas inferiores)
    ============================================================ */
+function pararFolha() { const f = pararSheet; pararSheet = null; if (f) f(); }
 function abrirSheet(html) {
+  pararFolha();
   $('#sheetBody').innerHTML = html;
   $('#sheet').hidden = false;
   document.body.classList.add('trava');
   const f = $('#sheetBody [autofocus]'); if (f) f.focus();
 }
 function fecharSheet() {
+  pararFolha();
   $('#sheet').hidden = true;
   document.body.classList.remove('trava');
   sheetEstado = null;
@@ -1020,7 +1115,7 @@ function barras(itens, cls) {
 }
 function sheetTotais(D, gid) {
   const g = D.grupos.get(gid);
-  const ds = [...D.desp.values()].filter(d => !d.apagada && d.grupo === gid);
+  const ds = [...D.desp.values()].filter(d => !d.apagada && d.valido && d.grupo === gid);
   if (!ds.length) return `<h2>Totais de ${esc(g.nome)}</h2><div class="vazio"><b>Sem despesas</b>Registre despesas para ver os totais.</div><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`;
   const total = ds.reduce((s, d) => s + d.valor, 0);
   const porCat = new Map(), porMes = new Map(); const pagou = { a: 0, b: 0 }, parte = { a: 0, b: 0 };
@@ -1053,10 +1148,12 @@ function csvLinhas(D, gid) {
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const n = c => (c / 100).toFixed(2).replace('.', ',');
   const A = nome('a'), B = nome('b');
-  const rows = [['Data', 'Tipo', 'Grupo', 'Descrição', 'Categoria', 'Valor (R$)', `Pagou ${A}`, `Pagou ${B}`, `Parte ${A}`, `Parte ${B}`, 'Observação'].map(q).join(';')];
+  /* o CSV é o registro: inclui também o que ainda espera confirmação, com o estado de cada linha */
+  const estado = x => (!x.valido ? 'Aguardando confirmação' : x.exclusaoPendente ? 'Exclusão pendente' : x.st === 'pendente' ? 'Alteração pendente' : 'Confirmado');
+  const rows = [['Data', 'Tipo', 'Grupo', 'Descrição', 'Categoria', 'Valor (R$)', `Pagou ${A}`, `Pagou ${B}`, `Parte ${A}`, `Parte ${B}`, 'Observação', 'Estado'].map(q).join(';')];
   const todos = [
-    ...[...D.desp.values()].filter(d => !d.apagada && (!gid || d.grupo === gid)).map(d => ({ data: d.data, ts: d.ts, l: [d.data, 'Despesa', (D.grupos.get(d.grupo) || {}).nome, d.desc, cat(d.cat).r, n(d.valor), n(d.pagou.a), n(d.pagou.b), n(d.devido.a), n(d.devido.b), d.nota || ''] })),
-    ...[...D.pag.values()].filter(p => !p.apagado && (!gid || p.grupo === gid)).map(p => ({ data: p.data, ts: p.ts, l: [p.data, 'Pagamento', (D.grupos.get(p.grupo) || {}).nome, `${nome(p.de)} pagou ${nome(p.para)}`, p.forma || '', n(p.valor), '', '', '', '', ''] }))
+    ...[...D.desp.values()].filter(d => !d.apagada && (!gid || d.grupo === gid)).map(d => ({ data: d.data, ts: d.ts, l: [d.data, 'Despesa', (D.grupos.get(d.grupo) || {}).nome, d.desc, cat(d.cat).r, n(d.valor), n(d.pagou.a), n(d.pagou.b), n(d.devido.a), n(d.devido.b), d.nota || '', estado(d)] })),
+    ...[...D.pag.values()].filter(p => !p.apagado && (!gid || p.grupo === gid)).map(p => ({ data: p.data, ts: p.ts, l: [p.data, 'Pagamento', (D.grupos.get(p.grupo) || {}).nome, `${nome(p.de)} pagou ${nome(p.para)}`, p.forma || '', n(p.valor), '', '', '', '', '', estado(p)] }))
   ].sort((x, y) => x.data.localeCompare(y.data) || x.ts - y.ts);
   todos.forEach(t => rows.push(t.l.map(q).join(';')));
   return '\ufeff' + rows.join('\r\n');
@@ -1083,6 +1180,7 @@ const AC = {
     store.save(data); render(); rolar();
   },
   tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; render(); rolar(); },
+  filtrarPend() { ui.soPend = !ui.soPend; render(); },
   abrirGrupo(d) { ui.view = { t: 'grupo', id: d.id }; ui.busca = ''; render(); rolar(); },
   voltar() {
     if (ui.view && ui.view.t === 'despesa' && ui.view.grupo && ui.view.volta !== 'atividade') ui.view = { t: 'grupo', id: ui.view.grupo };
@@ -1095,7 +1193,7 @@ const AC = {
     render(); rolar();
   },
   novaDespesa(d) { abrirSheet(formDespesa(null, d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : 'casal'))); atualizarHint(); },
-  editarDespesa(d) { const x = derivar().desp.get(d.id); if (x) { abrirSheet(formDespesa(x)); atualizarHint(); } },
+  editarDespesa(d) { const x = derivar().desp.get(d.id); if (x) { abrirSheet(formDespesa({ ...x, ...x.atual })); atualizarHint(); } }, /* parte da versão mais recente, mesmo pendente */
   async salvarDespesa() {
     if (bioOcupado) return;
     const sid = sheetEstado.id, novo = sheetEstado.novo;
@@ -1161,7 +1259,7 @@ const AC = {
   },
   abrirPagamento(d) {
     const D = derivar(), p = D.pag.get(d.id); if (!p || p.apagado) return;
-    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
+    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p, D)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
   },
   apagarPagamento(d) {
     const p = derivar().pag.get(d.id); if (!p) return;
@@ -1208,7 +1306,7 @@ const AC = {
   apagarTipo(d) { confirmar('Apagar este tipo? Os grupos que já usam o ícone não mudam.', 'Apagar', () => { addEvento({ tipo: 'tgrupo_del', alvo: d.id }); toast('Tipo apagado.'); fim(); }); },
   menuGrupo() {
     const g = derivar().grupos.get(ui.view.id);
-    abrirSheet(`<h2>${esc(g.nome)}</h2><button class="opcao" data-a="editarGrupo">✏️ Editar grupo</button>${g.padrao ? '' : '<button class="opcao deve" data-a="apagarGrupo">🗑️ Apagar grupo</button>'}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+    abrirSheet(`<h2>${esc(g.nome)}</h2><button class="opcao" data-a="editarGrupo">✏️ Editar grupo</button>${g.padrao || g.exclusao ? '' : '<button class="opcao deve" data-a="apagarGrupo">🗑️ Apagar grupo</button>'}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
   },
   editarGrupo() { abrirSheet(formGrupo(derivar().grupos.get(ui.view.id))); },
   salvarGrupo() {
@@ -1219,8 +1317,18 @@ const AC = {
     fecharSheet(); toast('Grupo salvo.'); fim();
   },
   apagarGrupo() {
-    const id = ui.view.id;
-    confirmar('Apagar este grupo e suas despesas?', 'Apagar', () => { addEvento({ tipo: 'grupo_del', alvo: id }); ui.view = null; toast('Grupo apagado.'); fim(); rolar(); });
+    const id = ui.view.id, D = derivar();
+    if (!grupoTemConteudo(D.desp, D.pag, id)) {
+      return confirmar('Apagar este grupo? Ele está vazio, então some na hora.', 'Apagar', () => { addEvento({ tipo: 'grupo_del', alvo: id }); ui.view = null; toast('Grupo apagado.'); fim(); rolar(); });
+    }
+    confirmar(`Pedir para apagar este grupo? Ele e todas as despesas e pagamentos que há nele só somem quando ${nome(OUT())} confirmar com a digital.`, 'Pedir exclusão', async () => {
+      if (bioOcupado) return;
+      bioOcupado = true;
+      try { await addEventoAssinado({ tipo: 'grupo_del', alvo: id, dados: {} }); }
+      catch (er) { bioOcupado = false; return toast(msgBio(er)); }
+      bioOcupado = false;
+      toast('Exclusão solicitada. Aguardando a outra pessoa.'); fim();
+    });
   },
   totais(d) { abrirSheet(sheetTotais(derivar(), d.g)); },
   csv(d) { baixar(d.g ? 'equilibra-grupo.csv' : 'equilibra-tudo.csv', csvLinhas(derivar(), d.g || null), 'text/csv;charset=utf-8'); toast('CSV gerado.'); },
@@ -1237,9 +1345,13 @@ const AC = {
   },
   sync() { sincronizar(true); },
   ativarSync() { ativarSync(); },
-  entrarEspaco() { entrarComCodigo(); },
-  copiarCodigo() { copiarCodigo(); },
-  trocarConexao() { data.sync.url = ''; data.sync.clave = ''; data.sync.enviado = ''; store.save(data); setSync('', ''); render(); },
+  escanear() { escanear(); },
+  convidar() { convidar(); },
+  verPedidoConexao() { if (ui.pedido) abrirSheet(sheetAprovar()); },
+  aprovarConexao() { aprovarConexao(); },
+  recusarConexao() { recusarConexao(); },
+  cancelarEntrada() { entradaId++; ui.entrada = null; render(); },
+  desconectar() { desconectar(); },
   fecharSheet() { fecharSheet(); },
   confirmarOk() { const cb = confirmCb; confirmCb = null; fecharSheet(); if (cb) cb(); }
 };
@@ -1271,54 +1383,168 @@ document.addEventListener('keydown', e => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && data) { fim(); } });
 
 /* ============================================================
-   SINCRONIZAÇÃO (mini servidor no Google Apps Script)
-   Cada pessoa envia só os próprios eventos; o servidor guarda
-   um arquivo por pessoa e devolve o da outra. O app junta os
-   eventos pelo id. Não usa login do Google, então nunca expira.
+   CÓDIGO QR (gerador próprio, sem internet: modo byte,
+   correção de erros nível M, versões 1 a 15)
+   ============================================================ */
+const QR = (() => {
+  /* blocos por versão: [qtd, total, dados] (+ segundo grupo) */
+  const BLOCOS = [null, [1, 26, 16], [1, 44, 28], [1, 70, 44], [2, 50, 32], [2, 67, 43], [4, 43, 27], [4, 49, 31], [2, 60, 38, 2, 61, 39], [3, 58, 36, 2, 59, 37], [4, 69, 43, 1, 70, 44], [1, 80, 50, 4, 81, 51], [6, 58, 36, 2, 59, 37], [8, 59, 37, 1, 60, 38], [4, 64, 40, 5, 65, 41], [5, 65, 41, 5, 66, 42]];
+  const ALINH = [null, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50], [6, 30, 54], [6, 32, 58], [6, 34, 62], [6, 26, 46, 66], [6, 26, 48, 70]];
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => (a && b ? EXP[LOG[a] + LOG[b]] : 0);
+  function rs(dados, n) {
+    let g = [1];
+    for (let i = 0; i < n; i++) { const ng = new Array(g.length + 1).fill(0); g.forEach((c, j) => { ng[j] ^= c; ng[j + 1] ^= mul(c, EXP[i]); }); g = ng; }
+    const r = dados.concat(new Array(n).fill(0));
+    for (let i = 0; i < dados.length; i++) { const c = r[i]; if (c) for (let j = 1; j < g.length; j++) r[i + j] ^= mul(g[j], c); }
+    return r.slice(dados.length);
+  }
+  const bits = d => { let n = 0; while (d) { n++; d >>>= 1; } return n; };
+  const bch = (v, g, k) => { let d = v << k; while (bits(d) - bits(g) >= 0) d ^= g << (bits(d) - bits(g)); return (v << k) | d; };
+  const MASK = [(i, j) => (i + j) % 2 === 0, i => i % 2 === 0, (i, j) => j % 3 === 0, (i, j) => (i + j) % 3 === 0,
+    (i, j) => (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0, (i, j) => (i * j) % 2 + (i * j) % 3 === 0,
+    (i, j) => ((i * j) % 2 + (i * j) % 3) % 2 === 0, (i, j) => ((i * j) % 3 + (i + j) % 2) % 2 === 0];
+
+  function codewords(texto) {
+    const bytes = [...new TextEncoder().encode(texto)];
+    let v = 1;
+    const cap = b => b[0] * b[2] + (b[3] || 0) * (b[5] || 0);
+    while (v <= 15 && 4 + (v < 10 ? 8 : 16) + bytes.length * 8 > cap(BLOCOS[v]) * 8) v++;
+    if (v > 15) throw new Error('qr-grande');
+    const b = BLOCOS[v], total = cap(b), bs = [];
+    const put = (x, n) => { for (let i = n - 1; i >= 0; i--) bs.push((x >>> i) & 1); };
+    put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach(x => put(x, 8));
+    for (let i = 0; i < 4 && bs.length < total * 8; i++) bs.push(0);
+    while (bs.length % 8) bs.push(0);
+    const cw = [];
+    for (let i = 0; i < bs.length; i += 8) cw.push(parseInt(bs.slice(i, i + 8).join(''), 2));
+    for (let p = 0; cw.length < total; p++) cw.push(p % 2 ? 0x11 : 0xec);
+    const grupos = [[b[0], b[1], b[2]]]; if (b[3]) grupos.push([b[3], b[4], b[5]]);
+    const blocos = []; let pos = 0;
+    grupos.forEach(([n, tot, dc]) => { for (let i = 0; i < n; i++) { const d = cw.slice(pos, pos + dc); pos += dc; blocos.push({ d, e: rs(d, tot - dc) }); } });
+    const out = [], maxD = Math.max(...blocos.map(x => x.d.length));
+    for (let i = 0; i < maxD; i++) blocos.forEach(x => { if (i < x.d.length) out.push(x.d[i]); });
+    for (let i = 0; i < blocos[0].e.length; i++) blocos.forEach(x => out.push(x.e[i]));
+    return { v, out };
+  }
+  function montar(v, dados, mask) {
+    const n = 17 + 4 * v, m = Array.from({ length: n }, () => new Array(n).fill(null));
+    const finder = (r0, c0) => {
+      for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+        const R = r0 + r, C = c0 + c; if (R < 0 || C < 0 || R >= n || C >= n) continue;
+        m[R][C] = (r >= 0 && r <= 6 && (c === 0 || c === 6)) || (c >= 0 && c <= 6 && (r === 0 || r === 6)) || (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+      }
+    };
+    finder(0, 0); finder(0, n - 7); finder(n - 7, 0);
+    for (const r of ALINH[v]) for (const c of ALINH[v]) {
+      if (m[r][c] !== null) continue;
+      for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) m[r + i][c + j] = Math.abs(i) === 2 || Math.abs(j) === 2 || (i === 0 && j === 0);
+    }
+    for (let i = 8; i < n - 8; i++) { if (m[i][6] === null) m[i][6] = i % 2 === 0; if (m[6][i] === null) m[6][i] = i % 2 === 0; }
+    const fmt = bch(mask, 0x537, 10) ^ 0x5412; /* nível M = 00 */
+    for (let i = 0; i < 15; i++) {
+      const d = ((fmt >> i) & 1) === 1;
+      if (i < 6) m[i][8] = d; else if (i < 8) m[i + 1][8] = d; else m[n - 15 + i][8] = d;
+      if (i < 8) m[8][n - i - 1] = d; else if (i < 9) m[8][15 - i] = d; else m[8][15 - i - 1] = d;
+    }
+    m[n - 8][8] = true;
+    if (v >= 7) {
+      const vb = bch(v, 0x1f25, 12);
+      for (let i = 0; i < 18; i++) { const d = ((vb >> i) & 1) === 1; m[Math.floor(i / 3)][i % 3 + n - 11] = d; m[i % 3 + n - 11][Math.floor(i / 3)] = d; }
+    }
+    let inc = -1, row = n - 1, bit = 7, idx = 0;
+    for (let col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (;;) {
+        for (let c = 0; c < 2; c++) {
+          if (m[row][col - c] !== null) continue;
+          let d = idx < dados.length && ((dados[idx] >>> bit) & 1) === 1;
+          if (MASK[mask](row, col - c)) d = !d;
+          m[row][col - c] = d;
+          if (--bit < 0) { idx++; bit = 7; }
+        }
+        row += inc;
+        if (row < 0 || row >= n) { row -= inc; inc = -inc; break; }
+      }
+    }
+    return m;
+  }
+  function penalidade(m) {
+    const n = m.length; let p = 0, escuros = 0;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      let iguais = 0;
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+        if ((i || j) && r + i >= 0 && r + i < n && c + j >= 0 && c + j < n && m[r + i][c + j] === m[r][c]) iguais++;
+      }
+      if (iguais > 5) p += 3 + iguais - 5;
+      if (r < n - 1 && c < n - 1) { const s = m[r][c] + m[r + 1][c] + m[r][c + 1] + m[r + 1][c + 1]; if (s === 0 || s === 4) p += 3; }
+      if (c < n - 6 && m[r][c] && !m[r][c + 1] && m[r][c + 2] && m[r][c + 3] && m[r][c + 4] && !m[r][c + 5] && m[r][c + 6]) p += 40;
+      if (r < n - 6 && m[r][c] && !m[r + 1][c] && m[r + 2][c] && m[r + 3][c] && m[r + 4][c] && !m[r + 5][c] && m[r + 6][c]) p += 40;
+      if (m[r][c]) escuros++;
+    }
+    return p + Math.floor(Math.abs(100 * escuros / (n * n) - 50) / 5) * 10;
+  }
+  function matriz(texto) {
+    const { v, out } = codewords(texto);
+    let melhor = null, menor = Infinity;
+    for (let k = 0; k < 8; k++) { const m = montar(v, out, k), p = penalidade(m); if (p < menor) { menor = p; melhor = m; } }
+    return melhor;
+  }
+  function svg(texto) {
+    const m = matriz(texto), n = m.length, q = 4; let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) d += `M${c + q} ${r + q}h1v1h-1z`;
+    return `<svg viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" shape-rendering="crispEdges" role="img" aria-label="Código QR"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }
+  return { svg };
+})();
+
+/* ============================================================
+   SINCRONIZAÇÃO (mini servidor no Google Apps Script, v2)
+   Cada celular tem uma chave própria, criada aqui e nunca
+   digitada; o servidor descobre quem é pela chave e guarda um
+   arquivo por pessoa, sem nunca apagar eventos. O segundo
+   celular entra lendo um QR do primeiro, que autoriza com a
+   digital. Não usa login do Google, então nunca expira.
    ============================================================ */
 try { localStorage.removeItem('equilibra:token'); } catch (e) {}
-let sincronizando = false, syncT = null, bioOcupado = false;
+let sincronizando = false, syncT = null, bioOcupado = false, entradaId = 0;
 
-/* Quem usava o Drive mantém o mesmo espaço; só falta informar endereço e chave. */
-if (data && data.sync && data.sync.arquivos) {
-  data.sync = { espaco: data.sync.espaco, url: '', clave: '', ultima: 0, enviado: '' };
+/* conexões antigas (com chave secreta digitada) precisam ser ativadas de novo; o endereço é aproveitado */
+if (data && data.sync && !data.sync.token) {
+  data.sync = { url: data.sync.url || '', token: '', espaco: '', ultima: 0, enviado: '' };
   store.save(data);
 }
-const syncAtiva = () => !!(data && data.sync && data.sync.url && data.sync.clave);
+const syncAtiva = () => !!(data && data.sync && data.sync.url && data.sync.token);
+const novaChave = (n = 32) => b64u.enc(crypto.getRandomValues(new Uint8Array(n)));
+const URL_SCRIPT = /^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/;
 
 function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h) + ':' + s.length; }
 function montarMeu() {
   const base = { v: 2, espaco: data.sync.espaco, autor: EU(), config: { nomes: data.config.nomes, ts: data.config.nomesTs || 0 }, eventos: data.eventos.filter(e => e.autor === EU()) };
   return { hash: hash(JSON.stringify(base)), obj: { ...base, atualizado: Date.now() } };
 }
-function mesclarDoOutro(arq) {
-  let n = 0; const ids = new Set(data.eventos.map(e => e.id)), out = OUT();
+/* junta eventos vindos do servidor; só aceita os do autor esperado */
+function mesclar(arq, autor) {
+  let n = 0; const ids = new Set(data.eventos.map(e => e.id));
   for (const e of (arq.eventos || [])) {
-    if (e && e.id && e.tipo && e.autor === out && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
-  }
-  const c = arq.config;
-  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (data.config.nomesTs || 0)) {
-    data.config.nomes = { a: c.nomes.a, b: c.nomes.b }; data.config.nomesTs = c.ts;
+    if (e && e.id && e.tipo && e.autor === autor && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
   }
   return n;
 }
+function aplicarNomes(c) {
+  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (data.config.nomesTs || 0)) {
+    data.config.nomes = { a: c.nomes.a, b: c.nomes.b }; data.config.nomesTs = c.ts;
+  }
+}
+function mesclarDoOutro(arq) { const n = mesclar(arq, OUT()); aplicarNomes(arq.config); return n; }
 async function chamar(s, corpo) {
   /* Sem cabeçalhos: o navegador envia como texto simples e o Apps Script aceita sem bloqueio de CORS. */
-  const r = await fetch(s.url, { method: 'POST', body: JSON.stringify({ k: s.clave, ...corpo }), redirect: 'follow' });
+  const r = await fetch(s.url, { method: 'POST', body: JSON.stringify({ t: s.token, ...corpo }), redirect: 'follow' });
   let j; try { j = await r.json(); } catch (e) { throw new Error('resposta-invalida'); }
   if (!j || !j.ok) throw new Error((j && j.erro) || 'erro-servidor');
   return j;
-}
-function codigoConvite() {
-  const s = data.sync;
-  return 'EQ1-' + btoa(unescape(encodeURIComponent(JSON.stringify({ u: s.url, k: s.clave, e: s.espaco, a: EU() }))));
-}
-function lerCodigo(txt) {
-  try {
-    const c = JSON.parse(decodeURIComponent(escape(atob(String(txt).replace(/\s+/g, '').replace(/^EQ1-/, '')))));
-    if (c && /^https:\/\/script\.google\.com\//.test(c.u) && c.k && c.e && (c.a === 'a' || c.a === 'b')) return c;
-  } catch (e) {}
-  return null;
 }
 function setSync(estado, msg) { ui.sync = { estado, msg: msg || '' }; }
 function renderSeguro() {
@@ -1326,14 +1552,17 @@ function renderSeguro() {
   if (a && a.closest && a.closest('#app') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
   render();
 }
+const semRede = m => /Failed to fetch|NetworkError|Load failed/.test(m);
 function msgErro(e) {
   const m = String((e && e.message) || e);
-  if (m === 'chave') return 'A chave não confere. Confira a chave e tente de novo.';
-  if (m === 'resposta-invalida') return 'O endereço não respondeu como esperado. Confira se foi publicado com acesso “Qualquer pessoa”.';
+  if (m === 'chave') return 'Este celular foi desconectado do espaço. Para voltar, peça um QR novo à outra pessoa.';
+  if (m === 'ja-configurado') return 'Este servidor já tem um espaço. Para entrar nele, leia o QR de quem já está conectado. Para começar do zero, mova o arquivo “Equilibra - dados v2.json” do seu Google Drive para a lixeira.';
+  if (m === 'convite-invalido') return 'QR inválido ou expirado. Peça um QR novo.';
+  if (m === 'convite-usado') return 'Este QR já foi lido por outro celular. Peça um QR novo.';
+  if (m === 'resposta-invalida') return 'O endereço não respondeu como esperado. Confira se o Apps Script foi publicado (nova versão) com acesso “Qualquer pessoa”.';
   if (m === 'ocupado') return 'O servidor está ocupado. Tente de novo em instantes.';
-  if (m === 'espaco-nao-encontrado') return 'Esse espaço ainda não existe no servidor. Peça para a outra pessoa sincronizar primeiro.';
   if (m === 'dados') return 'O servidor recusou os dados enviados.';
-  if (/Failed to fetch|NetworkError|Load failed/.test(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
+  if (semRede(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
   return m;
 }
 function agendarSync() {
@@ -1346,11 +1575,15 @@ async function sincronizar(interativo) {
   let novos = 0;
   try {
     const s = data.sync, m = montarMeu(), enviar = m.hash !== s.enviado;
-    const j = await chamar(s, { acao: 'sync', espaco: s.espaco, autor: EU(), meu: enviar ? m.obj : undefined });
+    /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
+    const j = await chamar(s, { acao: 'sync', meu: enviar ? m.obj : undefined, recuperar: s.recuperado ? undefined : true });
+    if (j.meu) { mesclar(j.meu, EU()); aplicarNomes(j.meu.config); }
+    s.recuperado = true; if (j.espaco) s.espaco = j.espaco;
     if (j.outro) novos = mesclarDoOutro(j.outro);
     if (enviar) s.enviado = m.hash;
     s.ultima = Date.now(); store.save(data);
-    setSync('ok', j.outro ? '' : `${nome(OUT())} ainda não sincronizou`);
+    setSync('ok', j.outro ? '' : `${nome(OUT())} ainda não conectou`);
+    verPedido(j.pedido);
     if (novos && interativo) toast(`${novos} novidade${novos > 1 ? 's' : ''} de ${nome(OUT())}.`);
     else if (interativo) toast('Tudo sincronizado.');
   } catch (e) {
@@ -1364,51 +1597,177 @@ async function sincronizar(interativo) {
 function falhou(e) { const t = msgErro(e); if (t) toast(t); }
 
 function ativarSync() {
-  const url = (($('#s-url') || {}).value || '').trim(), clave = (($('#s-chave') || {}).value || '').trim();
-  if (!/^https:\/\/script\.google\.com\/\S+/.test(url)) return toast('Cole o endereço do Apps Script (começa com https://script.google.com).');
-  if (clave.length < 6) return toast('A chave precisa ter pelo menos 6 caracteres.');
+  const url = (($('#s-url') || {}).value || '').trim();
+  if (!/^https:\/\/script\.google\.com\/\S+\/exec$/.test(url)) return toast('Cole o endereço do Apps Script (começa com https://script.google.com e termina em /exec).');
   if (data.eventos.some(e => e.autor !== EU())) {
-    return confirmar(`Há registros feitos no modo de teste como ${nome(OUT())}. Eles serão enviados como seus. Continuar?`, 'Continuar', () => executarAtivacao(url, clave));
+    return confirmar(`Há registros feitos no modo de teste como ${nome(OUT())}. Eles serão enviados como seus. Continuar?`, 'Continuar', () => executarAtivacao(url));
   }
-  executarAtivacao(url, clave);
+  executarAtivacao(url);
 }
-async function executarAtivacao(url, clave) {
+async function executarAtivacao(url) {
+  const token = novaChave();
+  let j;
+  try { toast('Ativando…'); j = await chamar({ url, token }, { acao: 'criar', autor: EU() }); }
+  catch (e) { return falhou(e); }
   data.eventos.forEach(e => { if (e.autor !== EU()) e.autor = EU(); });
   data.v = 2;
-  data.sync = { espaco: (data.sync && data.sync.espaco) || uid(), url, clave, ultima: 0, enviado: '' };
+  data.sync = { url, token, espaco: j.espaco, ultima: 0, enviado: '', recuperado: true };
   store.save(data);
   await sincronizar(true);
   render();
 }
-async function entrarComCodigo() {
-  const c = lerCodigo(($('#s-cod') || {}).value || '');
-  if (!c) return toast('Código inválido. Cole o código completo enviado pela outra pessoa.');
-  const eu = c.a === 'a' ? 'b' : 'a';
-  if (data && EU() !== eu) {
-    if (data.eventos.length) return toast('Este aparelho já tem dados como outra pessoa. Apague os dados deste aparelho (Conta) e entre de novo.');
-  }
-  const s = { espaco: c.e, url: c.u, clave: c.k, ultima: 0, enviado: '' };
-  try {
-    toast('Conectando…');
-    const j = await chamar(s, { acao: 'sync', espaco: c.e, autor: eu });
-    const o = j.outro;
-    if (!o || o.autor !== c.a || !o.config || !o.config.nomes) throw new Error('espaco-nao-encontrado');
-    if (!data) data = { v: 2, config: { nomes: o.config.nomes, nomesTs: o.config.ts || 0, eu }, eventos: [], sync: s };
-    else { data.config.eu = eu; data.sync = s; data.v = 2; }
-    mesclarDoOutro(o);
-    store.save(data);
-    ui.tab = 'grupos'; ui.view = null;
-    toast(`Conectado com ${nome(c.a)}.`);
-    await sincronizar(false);
-  } catch (e) { falhou(e); }
-  render();
+
+/* --- convidar (mostrar o QR) e autorizar com a digital --- */
+async function convidar() {
+  if (!syncAtiva()) return;
+  const p = novaChave(16);
+  try { await chamar(data.sync, { acao: 'convite', p }); } catch (e) { return falhou(e); }
+  const s = data.sync, m = URL_SCRIPT.exec(s.url);
+  const link = location.href.split('#')[0] + '#entrar=' + EU() + '.' + p + '.' + (m ? m[1] : encodeURIComponent(s.url));
+  let qr; try { qr = QR.svg(link); } catch (e) { return toast('Não foi possível gerar o QR.'); }
+  const o = esc(nome(OUT()));
+  abrirSheet(`<h2>Conectar o celular de ${o}</h2>
+    <p class="explica">No celular de ${o}, abra o Equilibra e toque em “Escanear QR”, ou aponte a câmera do celular para este código.</p>
+    <div class="qr">${qr}</div>
+    <p class="explica" style="text-align:center" id="qr-tempo">Vale por 10:00</p>
+    <p class="explica">Depois que ${o} ler o código, este celular vai pedir a sua digital para autorizar. O código só funciona uma vez.</p>
+    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+  sheetEstado = { qr: true };
+  const ate = Date.now() + 10 * 60000; let tique = 0;
+  const iv = setInterval(() => {
+    const resta = Math.max(0, ate - Date.now()), el = $('#qr-tempo');
+    if (el) el.textContent = resta ? `Vale por ${Math.floor(resta / 60000)}:${String(Math.floor(resta / 1000) % 60).padStart(2, '0')}` : 'Este QR expirou. Feche e gere outro.';
+    if (!resta) { clearInterval(iv); const q = $('#sheetBody .qr'); if (q) q.style.opacity = '.12'; return; }
+    if (++tique % 3 === 0) sincronizar(false); /* procura o pedido de quem leu o QR */
+  }, 1000);
+  pararSheet = () => clearInterval(iv);
 }
-function copiarCodigo() {
-  const t = $('#s-cod'); if (!t) return;
-  t.focus(); t.select();
-  const ok = () => toast('Código copiado.');
-  try { navigator.clipboard.writeText(t.value).then(ok, () => { document.execCommand('copy'); ok(); }); }
-  catch (e) { try { document.execCommand('copy'); ok(); } catch (e2) {} }
+function sheetAprovar() {
+  sheetEstado = { aprovar: true };
+  const o = esc(nome(OUT()));
+  return `<h2>📲 Pedido de conexão</h2>
+  <p>Um celular leu o seu QR e quer entrar neste espaço como <b>${o}</b>.</p>
+  <p class="explica" style="margin-top:8px">Só autorize se ${o} estiver com você e acabou de ler o QR. Se ${o} tinha outro celular conectado, aquele deixa de sincronizar.</p>
+  <div class="erro" id="erro" role="alert" hidden></div>
+  <div class="acoes"><button class="btn-sec" data-a="recusarConexao">Recusar</button><button class="btn" data-a="aprovarConexao">Autorizar com digital</button></div>`;
+}
+function verPedido(p) {
+  const novo = !!p && (!ui.pedido || ui.pedido.id !== p.id);
+  ui.pedido = p || null;
+  if (novo && ($('#sheet').hidden || (sheetEstado && sheetEstado.qr))) abrirSheet(sheetAprovar());
+  else if (!p && sheetEstado && sheetEstado.aprovar) fecharSheet();
+}
+const erroBio = er => er && /^(NotAllowedError|InvalidStateError|NotSupportedError|SecurityError|AbortError)$/.test(er.name);
+async function aprovarConexao() {
+  if (bioOcupado || !ui.pedido) return;
+  const p = ui.pedido; bioOcupado = true;
+  try {
+    const cid = await garantirChave();
+    await assinar({ item: 'conexao', id: p.id, tipo: 'aprovar', autor: EU(), dados: {} }, cid); /* exige a digital */
+    await chamar(data.sync, { acao: 'aprovar', id: p.id, sim: true });
+  } catch (er) { bioOcupado = false; return erroForm(erroBio(er) ? msgBio(er) : msgErro(er)); }
+  bioOcupado = false; ui.pedido = null;
+  fecharSheet(); toast(`Celular de ${nome(OUT())} conectado.`); render(); sincronizar(false);
+}
+async function recusarConexao() {
+  const p = ui.pedido; if (!p) return fecharSheet();
+  try { await chamar(data.sync, { acao: 'aprovar', id: p.id, sim: false }); } catch (e) { return falhou(e); }
+  ui.pedido = null; fecharSheet(); toast('Pedido recusado.'); render();
+}
+
+/* --- entrar no espaço da outra pessoa (quem leu o QR) --- */
+function lerConvite(txt) {
+  const m = /#entrar=([ab])\.([A-Za-z0-9_-]{20,100})\.(\S+)$/.exec(String(txt || ''));
+  if (!m) return null;
+  let u; try { u = decodeURIComponent(m[3]); } catch (e) { return null; }
+  if (/^[A-Za-z0-9_-]+$/.test(u)) u = `https://script.google.com/macros/s/${u}/exec`;
+  if (!/^https:\/\/script\.google\.com\/\S+\/exec$/.test(u)) return null;
+  return { a: m[1], p: m[2], url: u };
+}
+async function entrarComConvite(c) {
+  const meu = ++entradaId;
+  if (data && (syncAtiva() || data.eventos.length)) {
+    ui.entrada = { erro: 'Este aparelho já tem dados ou já está conectado. Para entrar no espaço da outra pessoa, apague os dados deste aparelho (Conta › Apagar os dados deste aparelho) e leia o QR de novo.' };
+    return render();
+  }
+  const eu = c.a === 'a' ? 'b' : 'a', s = { url: c.url, token: novaChave(), espaco: '', ultima: 0, enviado: '' };
+  ui.entrada = { msg: 'Conectando…' }; render();
+  try { await chamar(s, { acao: 'entrar', p: c.p }); }
+  catch (e) { if (meu === entradaId) { ui.entrada = { erro: msgErro(e) }; render(); } return; }
+  if (meu !== entradaId) return;
+  ui.entrada = { msg: 'Esperando a autorização no outro celular…' }; render();
+  const ate = Date.now() + 11 * 60000;
+  const tentar = async () => {
+    if (meu !== entradaId) return;
+    try {
+      const j = await chamar(s, { acao: 'sync', recuperar: true });
+      if (meu === entradaId) concluirEntrada(j, s, eu, c.a);
+    } catch (e) {
+      if (meu !== entradaId) return;
+      const m = String((e && e.message) || e);
+      if ((m === 'aguardando' || semRede(m)) && Date.now() < ate) { setTimeout(tentar, 3000); return; }
+      ui.entrada = { erro: m === 'chave' || m === 'aguardando' ? 'O pedido foi recusado ou o QR expirou. Peça um QR novo.' : msgErro(e) }; render();
+    }
+  };
+  setTimeout(tentar, 3000);
+}
+function concluirEntrada(j, s, eu, quemConvidou) {
+  const o = j.outro, c = (o && o.config) || {};
+  const nomes = c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' ? c.nomes : { a: 'Pessoa 1', b: 'Pessoa 2' };
+  data = { v: 2, config: { nomes: { a: nomes.a, b: nomes.b }, nomesTs: c.ts || 0, eu }, eventos: [], sync: { ...s, espaco: j.espaco || '', recuperado: true } };
+  if (j.meu) { mesclar(j.meu, eu); aplicarNomes(j.meu.config); }
+  if (o) mesclarDoOutro(o);
+  store.save(data);
+  ui.entrada = null; ui.tab = 'grupos'; ui.view = null;
+  toast(`Conectado com ${nome(quemConvidou)}.`);
+  fim();
+}
+function telaEntrada() {
+  const e = ui.entrada;
+  const corpo = e.erro
+    ? `<p class="erro" role="alert" style="margin-top:16px">${esc(e.erro)}</p><button class="btn cheio" style="margin:12px 0 0;width:100%" data-a="cancelarEntrada">Voltar</button>`
+    : `<p>${esc(e.msg)}</p><p class="explica">Peça para a outra pessoa tocar em “Autorizar com digital” no celular dela. Deixe esta tela aberta.</p><button class="btn-sec cheio" style="margin:20px 0 0;width:100%" data-a="cancelarEntrada">Cancelar</button>`;
+  return `<main class="boas"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${corpo}</main>`;
+}
+function abrirConviteDaUrl() {
+  if (!/^#entrar=/.test(location.hash)) return;
+  const c = lerConvite(location.hash);
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} /* tira o convite da barra de endereço */
+  if (c) entrarComConvite(c); else toast('QR inválido. Peça um QR novo.');
+}
+
+/* --- ler o QR com a câmera, dentro do app --- */
+async function escanear() {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return toast('Este navegador não lê QR. Use a câmera do celular para ler o código.');
+  }
+  let det, stream;
+  try {
+    det = new BarcodeDetector({ formats: ['qr_code'] });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+  } catch (e) { return toast('Não foi possível abrir a câmera. Permita o acesso à câmera ou use a câmera do celular.'); }
+  abrirSheet(`<h2>Escanear QR</h2><p class="explica">Aponte para o QR que aparece no celular da outra pessoa.</p>
+    <video id="cam" playsinline muted autoplay style="width:100%;border-radius:12px;background:#000;margin-top:8px"></video>
+    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button></div>`);
+  sheetEstado = { cam: true };
+  let ligado = true;
+  pararSheet = () => { ligado = false; stream.getTracks().forEach(t => t.stop()); };
+  const v = $('#cam'); v.srcObject = stream; if (v.play) v.play().catch(() => {});
+  const procurar = async () => {
+    if (!ligado) return;
+    try {
+      const r = await det.detect(v), c = r.length ? lerConvite(r[0].rawValue) : null;
+      if (c && ligado) { fecharSheet(); entrarComConvite(c); return; }
+    } catch (e) {}
+    setTimeout(procurar, 300);
+  };
+  procurar();
+}
+function desconectar() {
+  confirmar('Desconectar este celular? Os dados continuam aqui, mas param de sincronizar. Para voltar, a outra pessoa precisa mostrar um QR novo.', 'Desconectar', () => {
+    data.sync = { url: data.sync.url, token: '', espaco: '', ultima: 0, enviado: '' };
+    store.save(data); setSync('', ''); ui.pedido = null; render();
+  });
 }
 
 /* ============================================================
@@ -1416,6 +1775,7 @@ function copiarCodigo() {
    ============================================================ */
 function render() {
   const app = $('#app');
+  if (ui.entrada) { app.innerHTML = telaEntrada(); return; }
   if (!data) { app.innerHTML = telaBoas(); return; }
   const D = derivar();
   let v = ui.view;
@@ -1435,7 +1795,9 @@ function render() {
 if (data) gerarRecorrentes();
 render();
 if (data && data.sync) sincronizar(false);
+abrirConviteDaUrl(); /* aberto pelo QR lido com a câmera do celular */
 
+window.addEventListener('hashchange', abrirConviteDaUrl);
 window.addEventListener('online', () => { if (data) agendarSync(); });
 setInterval(() => { if (!document.hidden && syncAtiva() && !sincronizando) sincronizar(false); }, 10000);
 if (data) verificarTudo();

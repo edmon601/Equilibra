@@ -1,6 +1,6 @@
 /* Equilibra - service worker
    Busca sempre a versão mais nova quando há internet e usa a cópia guardada quando não há. */
-const VERSAO = 'equilibra-v1';
+const VERSAO = 'equilibra-v5';
 const ARQUIVOS = ['./equilibra.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
