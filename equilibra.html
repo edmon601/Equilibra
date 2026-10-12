@@ -18,7 +18,7 @@
   --tinta:#1b2a28; --suave:#5d716d; --linha:#e1e9e7; --fundo:#eef3f2; --papel:#fff;
   --deve:#c9481a; --deve-bg:#fdece4; --recebe:#1a7f45; --recebe-bg:#e5f5ec;
   --pend-bg:#fff6d6; --pend-tx:#8a6400; --pend-tx2:#6e5000; --erro-tx:#8f3210;
-  --pag-bg:#f7faf9; --pag-ico:#e8efed; --barra2:#7cc6bc; --toast-bg:#1b2a28; --toast-tx:#fff;
+  --pag-bg:#f7faf9; --pag-ico:#e8efed; --barra2:#7cc6bc; --toast-bg:#1b2a28; --toast-tx:#fff; --link:#1a5fd0;
   color-scheme:light;
 }
 /* modo escuro: automático (segue o celular) ou escolhido em Conta › Aparência */
@@ -27,7 +27,7 @@
   --tinta:#e4eeec; --suave:#9db1ad; --linha:#2b3b38; --fundo:#0d1514; --papel:#162120;
   --deve:#ff8f66; --deve-bg:#3b2119; --recebe:#63d397; --recebe-bg:#143022;
   --pend-bg:#3a3112; --pend-tx:#f2c94c; --pend-tx2:#f3d98b; --erro-tx:#ffb59a;
-  --pag-bg:#1a2725; --pag-ico:#22312e; --barra2:#2f8c80; --toast-bg:#e4eeec; --toast-tx:#0d1514;
+  --pag-bg:#1a2725; --pag-ico:#22312e; --barra2:#2f8c80; --toast-bg:#e4eeec; --toast-tx:#0d1514; --link:#8ab4ff;
   color-scheme:dark;
 }}
 :root[data-tema="escuro"]{
@@ -35,7 +35,7 @@
   --tinta:#e4eeec; --suave:#9db1ad; --linha:#2b3b38; --fundo:#0d1514; --papel:#162120;
   --deve:#ff8f66; --deve-bg:#3b2119; --recebe:#63d397; --recebe-bg:#143022;
   --pend-bg:#3a3112; --pend-tx:#f2c94c; --pend-tx2:#f3d98b; --erro-tx:#ffb59a;
-  --pag-bg:#1a2725; --pag-ico:#22312e; --barra2:#2f8c80; --toast-bg:#e4eeec; --toast-tx:#0d1514;
+  --pag-bg:#1a2725; --pag-ico:#22312e; --barra2:#2f8c80; --toast-bg:#e4eeec; --toast-tx:#0d1514; --link:#8ab4ff;
   color-scheme:dark;
 }
 *{box-sizing:border-box;margin:0}
@@ -138,6 +138,7 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .campo input,.campo select,.campo textarea{width:100%;border:1.5px solid var(--linha);border-radius:12px;padding:12px 14px;background:var(--papel);min-height:48px}
 .dupla{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .moeda{display:flex;align-items:center;border:1.5px solid var(--linha);border-radius:12px;padding-left:14px;background:var(--papel)}
+.campo>.moeda{display:flex;font-size:16px;font-weight:400;color:inherit;margin-bottom:0} /* gana de ".campo>span" */
 .moeda b{color:var(--suave);font-weight:600}
 .moeda input{border:0!important;min-width:0;flex:1;padding-left:8px!important}
 .chk{display:flex;align-items:center;gap:10px;padding:10px 0;min-height:44px}
@@ -182,6 +183,29 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .com-amigo:active{background:rgba(255,255,255,.28)}
 .avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;flex:none}
 img.avatar{object-fit:cover;background:var(--linha)}
+
+/* nota fiscal */
+.link{color:var(--link);text-decoration:underline;text-underline-offset:3px;font-weight:600}
+.nf{margin:0 16px 14px;padding:14px 16px;border:1.5px solid var(--linha);border-radius:14px}
+.nf.nf-box{margin:0 0 14px}
+.nf-tit{font-size:14px;font-weight:700;color:var(--suave);margin-bottom:6px}
+.nf-emp{font-size:17px;font-weight:700;line-height:1.3}
+.nf .meta{font-size:14px;color:var(--suave)}
+.nf-link{margin-top:8px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+.nf-aviso{margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--pend-bg);color:var(--pend-tx2);font-size:14px;line-height:1.35}
+.nf-scan{width:100%;margin-bottom:14px;gap:8px}
+
+/* câmera de QR (por cima de tudo) */
+.camada{position:fixed;inset:0;z-index:40;background:#000;color:#fff;display:flex;flex-direction:column}
+.camada-topo{display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top)) 8px 10px 16px;font-size:18px}
+.camada-video{position:relative;flex:1;min-height:0;overflow:hidden}
+.camada-video video{width:100%;height:100%;object-fit:cover}
+.camada .mira{position:absolute;left:50%;top:50%;width:min(64vw,280px);aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 2000px rgba(0,0,0,.35)}
+.camada-pe{padding:14px 16px calc(16px + env(safe-area-inset-bottom));background:#111}
+.camada-pe p{font-size:15px;margin-bottom:10px}
+.cam-erro{color:#ffc39f}
+.colar{display:flex;gap:8px}
+.colar input{flex:1;min-width:0;border:1.5px solid #444;border-radius:12px;padding:11px 12px;background:#1d1d1d;color:#fff}
 .avatar.mini{width:22px;height:22px;font-size:11px;display:inline-grid;vertical-align:middle}
 .avatar.g{width:76px;height:76px;font-size:32px}
 .com-amigo{display:inline-flex;align-items:center;gap:7px}
@@ -311,6 +335,7 @@ const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' }
 let sheetEstado = null;
 let confirmCb = null;
 let pararSheet = null; /* desliga câmera ou temporizador da folha aberta */
+let camAtual = null; /* câmera de QR aberta por cima da tela */
 
 /* ============================================================
    UTILITÁRIOS
@@ -622,7 +647,7 @@ function statusRev(r) {
 }
 const stCurto = x => (x.st !== 'pendente' ? '' : x.exclusaoPendente ? ' · ⏳ exclusão pendente' : x.valido ? ' · ⏳ alteração pendente' : ' · ⏳ aguardando confirmação');
 const retiravel = x => x.revs[0].autor === EU() && x.revs.every(r => r.st !== 'confirmado') && !x.exclusaoPendente;
-const ROT = { desc: 'descrição', valor: 'valor', cat: 'categoria', data: 'data', grupo: 'grupo', rec: 'repetição', nota: 'nota', forma: 'forma', de: 'quem pagou', para: 'quem recebeu' };
+const ROT = { desc: 'descrição', valor: 'valor', cat: 'categoria', data: 'data', grupo: 'grupo', rec: 'repetição', nota: 'nota', forma: 'forma', de: 'quem pagou', para: 'quem recebeu', nf: 'nota fiscal' };
 function fmtCampo(k, v, D) {
   if (v === null || v === undefined || v === '') return '—';
   if (k === 'valor') return R(v);
@@ -631,6 +656,7 @@ function fmtCampo(k, v, D) {
   if (k === 'grupo') return (D.grupos.get(v) || {}).nome || '';
   if (k === 'rec') return v === 'mensal' ? 'todo mês' : v === 'semanal' ? 'toda semana' : 'não repete';
   if (k === 'de' || k === 'para') return nome(v);
+  if (k === 'nf') { const i = nfInfo(v); return i ? (i.empresa || 'CNPJ ' + i.cnpjFmt) : '—'; }
   return String(v);
 }
 function diffCampos(antes, depois, D) {
@@ -782,6 +808,154 @@ function gerarRecorrentes(dd = data) {
 function fim() { if (data) gerarRecorrentes(); render(); agendarSync(); verificarTudo(); }
 
 /* ============================================================
+   NOTA FISCAL (NFC-e)
+   O QR da nota leva à consulta na Sefaz. Dele sai a chave de
+   acesso (44 caracteres): estado, mês/ano, CNPJ da loja, série
+   e número. Valor e dia só vêm no QR de contingência (raro).
+   O nome da loja vem de uma consulta pública ao CNPJ.
+   ============================================================ */
+const NF_UF = { 11: 'RO', 12: 'AC', 13: 'AM', 14: 'RR', 15: 'PA', 16: 'AP', 17: 'TO', 21: 'MA', 22: 'PI', 23: 'CE', 24: 'RN', 25: 'PB', 26: 'PE', 27: 'AL', 28: 'SE', 29: 'BA', 31: 'MG', 32: 'ES', 33: 'RJ', 35: 'SP', 41: 'PR', 42: 'SC', 43: 'RS', 50: 'MS', 51: 'MT', 52: 'GO', 53: 'DF' };
+/* dígito verificador (módulo 11); vale também para o CNPJ alfanumérico (letra = código ASCII − 48) */
+function dvChave(c43) { let s = 0, p = 2; for (let i = c43.length - 1; i >= 0; i--) { s += (c43.charCodeAt(i) - 48) * p; p = p === 9 ? 2 : p + 1; } const r = s % 11; return r < 2 ? 0 : 11 - r; }
+const chaveValida = c => /^[0-9]{6}[0-9A-Z]{14}(55|59|65)[0-9]{22}$/.test(c) && dvChave(c.slice(0, 43)) === +c[43];
+const cnpjFmt = s => `${s.slice(0, 2)}.${s.slice(2, 5)}.${s.slice(5, 8)}/${s.slice(8, 12)}-${s.slice(12, 14)}`;
+const urlSegura = s => { try { const u = new URL(s); return /^https?:$/.test(u.protocol) && s.length <= 1000 ? u : null; } catch (e) { return null; } };
+/* lê o texto de um QR de nota fiscal; devolve null se não for uma */
+function lerNota(raw) {
+  const txt = String(raw || '').trim(), u = urlSegura(txt);
+  if (!u) return null;
+  const p = u.searchParams.get('p') || '', partes = p.split('|');
+  const chave = (partes[0] || u.searchParams.get('chNFe') || '').replace(/\s/g, '').toUpperCase();
+  if (!chaveValida(chave)) return null;
+  const r = { url: u.href, chave, cnpj: chave.slice(6, 20) };
+  const aa = chave.slice(2, 4), mm = chave.slice(4, 6);
+  if (partes.length >= 8) { /* QR de contingência (v2): traz o dia e o valor */
+    const v = parseValor(String(partes[4]).replace('.', ',')), dia = String(partes[3]).padStart(2, '0');
+    if (v > 0) r.valor = v;
+    if (/^(0[1-9]|[12][0-9]|3[01])$/.test(dia)) r.data = `20${aa}-${mm}-${dia}`;
+  } else if (u.searchParams.get('vNF')) { /* QR antigo (v1) */
+    const v = parseValor(String(u.searchParams.get('vNF')).replace('.', ','));
+    if (v > 0) r.valor = v;
+    try { const h = u.searchParams.get('dhEmi') || '', d = h.replace(/../g, x => String.fromCharCode(parseInt(x, 16))); if (/^\d{4}-\d{2}-\d{2}/.test(d)) r.data = d.slice(0, 10); } catch (e) {}
+  }
+  return r;
+}
+/* o que está guardado na despesa: confere tudo de novo antes de mostrar (pode ter vindo da outra pessoa) */
+function nfInfo(nf) {
+  if (!nf || typeof nf !== 'object' || typeof nf.chave !== 'string' || !chaveValida(nf.chave)) return null;
+  const u = typeof nf.url === 'string' ? urlSegura(nf.url) : null;
+  if (!u) return null;
+  const c = nf.chave, txt = v => (typeof v === 'string' ? v.slice(0, 120) : '');
+  const mes = new Date(+('20' + c.slice(2, 4)), +c.slice(4, 6) - 1, 15).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return { url: u.href, host: u.hostname, gov: /(^|\.)gov\.br$/i.test(u.hostname), chave: c, cnpj: c.slice(6, 20), cnpjFmt: cnpjFmt(c.slice(6, 20)),
+    uf: NF_UF[+c.slice(0, 2)] || '', aamm: c.slice(2, 6), mesAno: mes, serie: +c.slice(22, 25), numero: +c.slice(25, 34), empresa: txt(nf.empresa), razao: txt(nf.razao) };
+}
+const nfBusca = nf => { const i = nfInfo(nf); return i ? [i.empresa, i.razao, i.cnpj, i.cnpjFmt, 'nota ' + i.numero, i.host].join(' ') : ''; };
+function tituloEmpresa(s) {
+  const pequenas = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().split(' ')
+    .map((w, i) => (i && pequenas.has(w) ? w
+      : /^(s\/?a|me|epp|eireli)$/.test(w) || /^[a-z]{2,4}$/.test(w) && !/[aeiouy]/.test(w) ? w.toUpperCase() /* siglas: SDB, LTDA fica Ltda */
+        : w.replace(/(^|-)(\S)/g, (m, a, b) => a + b.toUpperCase()))).join(' ');
+}
+/* nome da loja pelo CNPJ (consulta pública; só o CNPJ sai do aparelho). Guarda o resultado para não repetir. */
+async function buscarEmpresa(cnpj) {
+  const k = 'equilibra:cnpj:' + cnpj;
+  try { const c = JSON.parse(localStorage.getItem(k) || 'null'); if (c && c.nome) return c; } catch (e) {}
+  if (!/^[0-9]{14}$/.test(cnpj)) return null;
+  for (const url of [`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, `https://publica.cnpj.ws/cnpj/${cnpj}`]) {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const t = ctl ? setTimeout(() => ctl.abort(), 8000) : 0;
+      const r = await fetch(url, ctl ? { signal: ctl.signal } : {});
+      clearTimeout(t);
+      if (!r.ok) continue;
+      const j = await r.json(), est = j.estabelecimento || {};
+      const razao = String(j.razao_social || '').trim(), fantasia = String(j.nome_fantasia || est.nome_fantasia || '').trim();
+      if (!razao && !fantasia) continue;
+      const cnae = String(j.cnae_fiscal || (est.atividade_principal && est.atividade_principal.id) || '').replace(/\D/g, '').slice(0, 7);
+      const res = { nome: tituloEmpresa(fantasia || razao).slice(0, 60), razao: tituloEmpresa(razao).slice(0, 120), cnae };
+      try { localStorage.setItem(k, JSON.stringify(res)); } catch (e) {}
+      return res;
+    } catch (e) {}
+  }
+  return null;
+}
+/* categoria sugerida pela atividade principal da loja (CNAE) */
+function catPorCnae(c) {
+  const n = String(c || '');
+  if (/^47(11|12|21|22|23|24|29)/.test(n)) return 'mercado';
+  if (/^56/.test(n)) return 'restaurante';
+  if (n === '4789004' || /^75/.test(n)) return 'pet';
+  if (/^(4771|86|87)/.test(n)) return 'saude';
+  if (/^(4731|4732|4520|4530|49|52)/.test(n)) return 'transporte';
+  if (/^(55|51|7911)/.test(n)) return 'viagem';
+  if (/^(59|90|91|93)/.test(n)) return 'lazer';
+  if (/^(35|36|61)/.test(n)) return 'contas';
+  if (/^(68|474[1-4])/.test(n)) return 'moradia';
+  if (/^47/.test(n)) return 'compras';
+  return null;
+}
+function nfDetalheHTML(nf) {
+  const i = nfInfo(nf); if (!i) return '';
+  return `${i.empresa ? `<p class="nf-emp">${esc(i.empresa)}</p>` : ''}${i.razao && i.razao !== i.empresa ? `<p class="meta">${esc(i.razao)}</p>` : ''}
+    <p class="meta">CNPJ ${esc(i.cnpjFmt)} · nota nº ${i.numero}${i.serie ? ' · série ' + i.serie : ''} · ${esc(i.mesAno)}${i.uf ? ' · ' + i.uf : ''}</p>
+    <p class="nf-link"><a class="link" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">Ver nota fiscal</a> <span class="meta">${esc(i.host)}</span></p>
+    ${i.gov ? '' : '<p class="nf-aviso">⚠️ Este link não é de um site do governo. Confira o endereço antes de abrir.</p>'}`;
+}
+
+/* --- câmera para ler QR (nota fiscal ou convite), por cima de qualquer tela --- */
+function lerQRCamera({ titulo, dica, aceitar }) {
+  return new Promise(resolve => {
+    const w = document.createElement('div');
+    w.className = 'camada'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true');
+    const temLeitor = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    w.innerHTML = `<div class="camada-topo"><b>${esc(titulo)}</b><button class="ic" data-cam="fechar" aria-label="Fechar">✕</button></div>
+      ${temLeitor ? '<div class="camada-video"><video playsinline muted autoplay></video><i class="mira" aria-hidden="true"></i></div>' : ''}
+      <div class="camada-pe"><p class="cam-dica">${esc(temLeitor ? dica : 'Este navegador não lê QR pela câmera. Cole aqui o link do QR.')}</p>
+      <p class="cam-erro" role="alert" hidden></p>
+      <div class="colar"><input type="url" placeholder="${temLeitor ? 'ou cole o link do QR' : 'https://…'}" aria-label="Link do QR" autocomplete="off"><button class="btn" data-cam="usar">Usar</button></div></div>`;
+    document.body.appendChild(w);
+    let stream = null, aberta = true;
+    const fim = r => {
+      if (!aberta) return; aberta = false;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      w.remove(); camAtual = null; ajustarHistorico(); resolve(r);
+    };
+    const erro = m => { const e = w.querySelector('.cam-erro'); e.textContent = m; e.hidden = false; };
+    camAtual = { fechar: () => fim(null) };
+    ajustarHistorico();
+    w.addEventListener('click', ev => {
+      const b = ev.target.closest && ev.target.closest('[data-cam]'); if (!b) return;
+      if (b.dataset.cam === 'fechar') return fim(null);
+      const r = aceitar(w.querySelector('input').value.trim());
+      if (r) fim(r); else erro('Este link não é o esperado. Confira e tente de novo.');
+    });
+    if (!temLeitor) return;
+    (async () => {
+      try {
+        const det = new BarcodeDetector({ formats: ['qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (!aberta) { stream.getTracks().forEach(t => t.stop()); return; }
+        const v = w.querySelector('video'); v.srcObject = stream; if (v.play) v.play().catch(() => {});
+        let visto = '';
+        const procurar = async () => {
+          if (!aberta) return;
+          try {
+            for (const c of await det.detect(v)) {
+              const r = aceitar(c.rawValue); if (r) return fim(r);
+              if (c.rawValue !== visto) { visto = c.rawValue; erro('Este QR não é o esperado. Aponte para o QR certo.'); }
+            }
+          } catch (e) {}
+          setTimeout(procurar, 250);
+        };
+        procurar();
+      } catch (e) { erro('Não foi possível abrir a câmera. Permita o acesso à câmera ou cole o link abaixo.'); }
+    })();
+  });
+}
+
+/* ============================================================
    TELAS
    ============================================================ */
 function topo(titulo, op = {}) {
@@ -926,7 +1100,7 @@ function linhaDespesa(d) {
   else if (net > 0) dir = `<span class="dir recebe"><small>você emprestou</small><b>${R(net)}</b></span>`;
   else if (net < 0) dir = `<span class="dir deve"><small>você deve</small><b>${R(-net)}</b></span>`;
   else dir = '<span class="dir quite"><small>sem saldo</small></span>';
-  return `<button class="linha${d.st === 'pendente' ? ' pend' : ''}" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}${stCurto(d)}</span></span>${dir}</button>`;
+  return `<button class="linha${d.st === 'pendente' ? ' pend' : ''}" data-a="abrirDespesa" data-id="${esc(d.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">${c.e}</span><span class="mid"><span class="t">${esc(d.desc)}</span><span class="s">${esc(pagouTexto(d))}${d.rec ? ' · repete' : ''}${nfInfo(d.nf) ? ' · 🧾' : ''}${stCurto(d)}</span></span>${dir}</button>`;
 }
 function textoPag(p) {
   if (p.de === EU()) return `Você pagou ${nome(p.para)}`;
@@ -938,17 +1112,17 @@ function linhaPag(p) {
   return `<button class="linha pag${p.st === 'pendente' ? ' pend' : ''}" data-a="abrirPagamento" data-id="${esc(p.id)}"><span class="dt"><b>${dm.d}</b><span>${esc(dm.m)}</span></span><span class="ico" aria-hidden="true">💸</span><span class="mid"><span class="t">${esc(textoPag(p))}</span><span class="s">${esc(p.forma || 'Pagamento')}${stCurto(p)}</span></span><span class="dir quite"><b>${R(p.valor)}</b></span></button>`;
 }
 function listaGrupo(D, gid, q) {
-  q = (q || '').trim().toLowerCase();
+  const termos = norm(q).split(/\s+/).filter(Boolean);
   let itens = [
     ...[...D.desp.values()].filter(d => !d.apagada && d.grupo === gid).map(d => ({ k: 'd', x: d })),
     ...[...D.pag.values()].filter(p => !p.apagado && p.grupo === gid).map(p => ({ k: 'p', x: p }))
   ];
-  if (q) {
+  if (termos.length) {
     itens = itens.filter(({ k, x }) => {
-      const txt = k === 'd'
-        ? `${x.desc} ${cat(x.cat).r} ${fmtIn(x.valor)} ${x.nota || ''} ${quem(x.autor)}`
-        : `${textoPag(x)} ${x.forma || ''} ${fmtIn(x.valor)}`;
-      return txt.toLowerCase().includes(q);
+      const txt = norm(k === 'd'
+        ? `${x.desc} ${cat(x.cat).r} ${fmtIn(x.valor)} ${R(x.valor)} ${x.nota || ''} ${quem(x.autor)} ${nfBusca(x.nf)}`
+        : `${textoPag(x)} ${x.forma || ''} ${fmtIn(x.valor)} ${R(x.valor)}`);
+      return termos.every(w => txt.includes(w));
     });
   }
   if (!itens.length) {
@@ -997,6 +1171,7 @@ function telaDespesa(D, id) {
       <p class="meta">${esc(c.r)} · ${esc(dataLonga(d.data))}</p>
       <p class="meta">Adicionada por ${esc(quem(d.autor))} em ${esc(g ? g.nome : '')}${d.editado ? ' · editada' : ''}</p>
       <p class="meta">${esc(tipos[d.tipo] || '')}</p>${rec}${d.nota ? `<p style="margin-top:10px">${esc(d.nota)}</p>` : ''}</section>
+    ${nfInfo(d.nf) ? `<section class="nf"><p class="nf-tit">🧾 Nota fiscal</p>${nfDetalheHTML(d.nf)}</section>` : ''}
     ${blocoStatus(d, D)}
     ${pessoas}
     <div class="acoes" style="padding:0 16px;margin:16px 0">${d.exclusaoPendente ? '' : `<button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">${retiravel(d) ? 'Retirar' : 'Apagar'}</button>`}</div>
@@ -1040,7 +1215,7 @@ function textoBusca(e, D, x) {
   const it = D.desp.get(alvo) || D.pag.get(alvo);
   for (const d of [e.dados, it && it.atual, it && it.conta]) {
     if (!d) continue;
-    partes.push(d.desc, d.nota, d.forma, d.texto, d.nome);
+    partes.push(d.desc, d.nota, d.forma, d.texto, d.nome, nfBusca(d.nf));
     if (d.cat) partes.push(cat(d.cat).r);
     if (d.grupo) partes.push((D.grupos.get(d.grupo) || {}).nome);
     if (d.data) partes.push(d.data, dataLonga(d.data));
@@ -1142,7 +1317,7 @@ function blocoPerfil() {
   const foto = fotoDe(data, EU());
   return `<div class="perfil">
     <button class="perfil-foto" data-a="trocarFoto" aria-label="${foto ? 'Trocar' : 'Escolher'} foto de perfil">${avatar(nome(EU()), foto, 'g')}<span class="cam">${CAMERA}</span></button>
-    <div class="perfil-txt"><b>${esc(nome(EU()))}</b><small>${foto ? 'Sua foto aparece no celular dos seus amigos.' : 'Toque na foto para escolher uma. Ela aparece no celular dos seus amigos.'}</small>
+    <div class="perfil-txt"><b>${esc(nome(EU()))}</b>
     ${foto ? '<button class="btn-txt" style="padding:6px 0;min-height:36px;color:var(--suave)" data-a="removerFoto">Remover foto</button>' : ''}</div>
   </div>`;
 }
@@ -1247,10 +1422,11 @@ function divHTML(tipo, ent) {
 function formDespesa(d, gid) {
   const D = derivar(), novo = !d;
   const v = d || { grupo: gid || 'casal', desc: '', valor: 0, data: hoje(), cat: 'geral', pagouModo: EU(), pagou: null, tipo: 'igual', ent: null, rec: null, nota: '' };
-  sheetEstado = { id: novo ? uid() : d.id, novo };
+  sheetEstado = { id: novo ? uid() : d.id, novo, nf: nfInfo(v.nf) ? { ...v.nf } : null };
   const gs = gruposAtivos(D);
   return `<h2>${novo ? 'Nova despesa' : 'Editar despesa'}</h2>
   <div class="erro" id="erro" role="alert" hidden></div>
+  <div id="nf-area">${nfFormHTML()}</div>
   <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}" ${novo ? 'autofocus' : ''}></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="f-valor" inputmode="decimal" placeholder="0,00" value="${v.valor ? fmtIn(v.valor) : ''}"></span></label>
@@ -1309,6 +1485,41 @@ function avisoSemEfeito(total, r) {
     : 'Esta despesa não muda o saldo entre vocês: cada um pagou exatamente a sua parte.';
   return `<span class="aviso">⚠️ ${esc(txt)}</span>`;
 }
+/* --- nota fiscal dentro do formulário --- */
+function nfFormHTML() {
+  const se = sheetEstado || {}, i = nfInfo(se.nf);
+  if (!i) return `<button type="button" class="btn-sec nf-scan" data-a="escanearNota">${CAMERA}<span>Escanear nota fiscal</span></button>`;
+  const avisos = [];
+  if (se.nfBusca === 'buscando') avisos.push('<p class="explica">Buscando o nome da empresa…</p>');
+  if (se.nfBusca === 'falhou') avisos.push('<p class="nf-aviso">Não foi possível buscar o nome da empresa agora. O CNPJ e o link ficaram salvos.</p>');
+  const dt = ($('#f-data') || {}).value || '';
+  if (dt && dt.slice(2, 4) + dt.slice(5, 7) !== i.aamm) avisos.push(`<p class="nf-aviso">⚠️ A nota é de ${esc(i.mesAno)}, mas a data da despesa está em outro mês.</p>`);
+  const rep = data ? [...derivar().desp.values()].find(x => x.id !== se.id && !x.apagada && nfInfo(x.nf) && x.nf.chave === i.chave) : null;
+  if (rep) avisos.push(`<p class="nf-aviso">⚠️ Esta nota já está na despesa “${esc(rep.desc)}” de ${esc(dataLonga(rep.data))}.</p>`);
+  return `<div class="nf nf-box"><p class="nf-tit">🧾 Nota fiscal anexada</p>${nfDetalheHTML(se.nf)}${avisos.join('')}
+    <button type="button" class="btn-txt" style="padding:8px 0 0;min-height:36px" data-a="removerNota">Remover nota</button></div>`;
+}
+const atualizarNotaForm = () => { const a = $('#nf-area'); if (a) a.innerHTML = nfFormHTML(); };
+async function escanearNota() {
+  const se = sheetEstado;
+  const n = await lerQRCamera({ titulo: 'Escanear nota fiscal', dica: 'Aponte para o QR code impresso na nota fiscal.', aceitar: lerNota });
+  if (!n || sheetEstado !== se) return;
+  se.nf = { url: n.url, chave: n.chave };
+  const dsc = $('#f-desc'), val = $('#f-valor'), dt = $('#f-data');
+  if (n.valor && val && !String(val.value || '').trim()) val.value = fmtIn(n.valor);
+  if (n.data && dt) dt.value = n.data;
+  se.nfBusca = 'buscando'; atualizarNotaForm(); atualizarHint();
+  const emp = await buscarEmpresa(n.cnpj);
+  if (sheetEstado !== se || !se.nf || se.nf.chave !== n.chave) return;
+  if (emp) {
+    se.nf.empresa = emp.nome; se.nf.razao = emp.razao;
+    if (dsc && (!String(dsc.value || '').trim() || dsc.value === se.descAuto)) { dsc.value = emp.nome; se.descAuto = emp.nome; }
+    const c = catPorCnae(emp.cnae), sel = $('#f-cat');
+    if (c && sel && sel.value === 'geral') sel.value = c;
+    se.nfBusca = '';
+  } else se.nfBusca = 'falhou';
+  atualizarNotaForm();
+}
 function lerForm(id) {
   const desc = $('#f-desc').value.trim(), total = parseValor($('#f-valor').value);
   if (!desc) return { erro: 'Dê uma descrição à despesa.' };
@@ -1321,7 +1532,7 @@ function lerForm(id) {
   } else pagou = { a: modo === 'a' ? total : 0, b: modo === 'b' ? total : 0 };
   const r = lerDivisao(total, id);
   if (r.erro) return { erro: r.erro };
-  return { dados: { grupo: $('#f-grupo').value, desc, valor: total, data: $('#f-data').value || hoje(), cat: $('#f-cat').value, pagouModo: modo, pagou, tipo: r.tipo, ent: r.ent, devido: r.ok, rec: $('#f-rec').value || null, nota: $('#f-nota').value.trim() } };
+  return { dados: { grupo: $('#f-grupo').value, desc, valor: total, data: $('#f-data').value || hoje(), cat: $('#f-cat').value, pagouModo: modo, pagou, tipo: r.tipo, ent: r.ent, devido: r.ok, rec: $('#f-rec').value || null, nota: $('#f-nota').value.trim(), nf: sheetEstado && sheetEstado.nf ? { ...sheetEstado.nf } : null } };
 }
 
 /* --- pagamento --- */
@@ -1434,10 +1645,11 @@ function csvLinhas(D, gid) {
   const A = nome('a'), B = nome('b');
   /* o CSV é o registro: inclui também o que ainda espera confirmação, com o estado de cada linha */
   const estado = x => (!x.valido ? 'Aguardando confirmação' : x.exclusaoPendente ? 'Exclusão pendente' : x.st === 'pendente' ? 'Alteração pendente' : 'Confirmado');
-  const rows = [['Data', 'Tipo', 'Grupo', 'Descrição', 'Categoria', 'Valor (R$)', `Pagou ${A}`, `Pagou ${B}`, `Parte ${A}`, `Parte ${B}`, 'Observação', 'Estado'].map(q).join(';')];
+  const rows = [['Data', 'Tipo', 'Grupo', 'Descrição', 'Categoria', 'Valor (R$)', `Pagou ${A}`, `Pagou ${B}`, `Parte ${A}`, `Parte ${B}`, 'Observação', 'Estado', 'Empresa (nota fiscal)', 'CNPJ', 'Link da nota fiscal'].map(q).join(';')];
+  const nfCols = x => { const i = nfInfo(x.nf); return i ? [i.empresa, i.cnpjFmt, i.url] : ['', '', '']; };
   const todos = [
-    ...[...D.desp.values()].filter(d => !d.apagada && (!gid || d.grupo === gid)).map(d => ({ data: d.data, ts: d.ts, l: [d.data, 'Despesa', (D.grupos.get(d.grupo) || {}).nome, d.desc, cat(d.cat).r, n(d.valor), n(d.pagou.a), n(d.pagou.b), n(d.devido.a), n(d.devido.b), d.nota || '', estado(d)] })),
-    ...[...D.pag.values()].filter(p => !p.apagado && (!gid || p.grupo === gid)).map(p => ({ data: p.data, ts: p.ts, l: [p.data, 'Pagamento', (D.grupos.get(p.grupo) || {}).nome, `${nome(p.de)} pagou ${nome(p.para)}`, p.forma || '', n(p.valor), '', '', '', '', '', estado(p)] }))
+    ...[...D.desp.values()].filter(d => !d.apagada && (!gid || d.grupo === gid)).map(d => ({ data: d.data, ts: d.ts, l: [d.data, 'Despesa', (D.grupos.get(d.grupo) || {}).nome, d.desc, cat(d.cat).r, n(d.valor), n(d.pagou.a), n(d.pagou.b), n(d.devido.a), n(d.devido.b), d.nota || '', estado(d), ...nfCols(d)] })),
+    ...[...D.pag.values()].filter(p => !p.apagado && (!gid || p.grupo === gid)).map(p => ({ data: p.data, ts: p.ts, l: [p.data, 'Pagamento', (D.grupos.get(p.grupo) || {}).nome, `${nome(p.de)} pagou ${nome(p.para)}`, p.forma || '', n(p.valor), '', '', '', '', '', estado(p), '', '', ''] }))
   ].sort((x, y) => x.data.localeCompare(y.data) || x.ts - y.ts);
   todos.forEach(t => rows.push(t.l.map(q).join(';')));
   return '\ufeff' + rows.join('\r\n');
@@ -1472,6 +1684,8 @@ const AC = {
   },
   removerAmigo() { removerAmigo(); },
   trocarFoto() { $('#foto-arq').click(); },
+  escanearNota() { escanearNota(); },
+  removerNota() { if (sheetEstado) { sheetEstado.nf = null; sheetEstado.nfBusca = ''; atualizarNotaForm(); } },
   removerFoto() { confirmar('Remover sua foto de perfil? Ela também some do celular dos seus amigos.', 'Remover', () => { salvarFoto(null); toast('Foto removida.'); }); },
   tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; ui.buscaAtiv = ''; render(); rolar(); if (d.t === 'amigos') sincronizarOutros(); },
   filtrarPend() { ui.soPend = !ui.soPend; render(); },
@@ -1664,6 +1878,7 @@ document.addEventListener('change', e => {
   const id = e.target.id;
   if (id === 'f-tipo') { $('#divCampos').innerHTML = divHTML(e.target.value, null); atualizarHint(); }
   else if (id === 'f-pagou') { $('#pagoCampos').innerHTML = pagoHTML(e.target.value, null); atualizarHint(); }
+  else if (id === 'f-data' && sheetEstado && sheetEstado.nf) atualizarNotaForm();
   else if (id === 'p-grupo') preencherPagamento();
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
@@ -2099,30 +2314,8 @@ function abrirConviteDaUrl() {
 
 /* --- ler o QR com a câmera, dentro do app --- */
 async function escanear() {
-  if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    return toast('Este navegador não lê QR. Use a câmera do celular para ler o código.');
-  }
-  let det, stream;
-  try {
-    det = new BarcodeDetector({ formats: ['qr_code'] });
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-  } catch (e) { return toast('Não foi possível abrir a câmera. Permita o acesso à câmera ou use a câmera do celular.'); }
-  abrirSheet(`<h2>Escanear QR</h2><p class="explica">Aponte para o QR que aparece no celular da outra pessoa.</p>
-    <video id="cam" playsinline muted autoplay style="width:100%;border-radius:12px;background:#000;margin-top:8px"></video>
-    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button></div>`);
-  sheetEstado = { cam: true };
-  let ligado = true;
-  pararSheet = () => { ligado = false; stream.getTracks().forEach(t => t.stop()); };
-  const v = $('#cam'); v.srcObject = stream; if (v.play) v.play().catch(() => {});
-  const procurar = async () => {
-    if (!ligado) return;
-    try {
-      const r = await det.detect(v), c = r.length ? lerConvite(r[0].rawValue) : null;
-      if (c && ligado) { fecharSheet(); entrarComConvite(c); return; }
-    } catch (e) {}
-    setTimeout(procurar, 300);
-  };
-  procurar();
+  const c = await lerQRCamera({ titulo: 'Escanear QR', dica: 'Aponte para o QR que aparece no celular da outra pessoa.', aceitar: lerConvite });
+  if (c) { if (!$('#sheet').hidden) fecharSheet(); entrarComConvite(c); }
 }
 function desconectar() {
   confirmar('Desconectar este celular? Os dados continuam aqui, mas param de sincronizar. Para voltar, a outra pessoa precisa mostrar um QR novo.', 'Desconectar', () => {
@@ -2138,7 +2331,7 @@ function desconectar() {
    volta para a tela principal; só lá ele sai do app.
    ============================================================ */
 let passoHist = false, ignorarPop = false;
-const naPrincipal = () => !ui.entrada && $('#sheet').hidden && (!data || (!ui.view && ui.tab === 'grupos'));
+const naPrincipal = () => !camAtual && !ui.entrada && $('#sheet').hidden && (!data || (!ui.view && ui.tab === 'grupos'));
 function ajustarHistorico() {
   try {
     const fora = !naPrincipal();
@@ -2152,7 +2345,8 @@ function ajustarHistorico() {
 window.addEventListener('popstate', () => {
   if (ignorarPop) { ignorarPop = false; return; }
   passoHist = false;
-  if (!$('#sheet').hidden) fecharSheet();
+  if (camAtual) camAtual.fechar();
+  else if (!$('#sheet').hidden) fecharSheet();
   else if (ui.entrada) AC.cancelarEntrada();
   else if (ui.view) AC.voltar();
   else if (data && ui.tab !== 'grupos') AC.tab({ t: 'grupos' });
