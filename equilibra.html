@@ -170,10 +170,19 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .tipo-item span{display:flex;align-items:center;gap:10px;font-size:16px;min-width:0}
 .linha .ico svg{display:block}
 
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--papel);border-top:1px solid var(--linha);display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:env(safe-area-inset-bottom);z-index:7}
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--papel);border-top:1px solid var(--linha);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom);z-index:7}
 .nav button{padding:8px 4px 9px;text-align:center;font-size:12px;font-weight:600;color:var(--suave);min-height:60px}
 .nav button span{display:block;font-size:22px;line-height:1.2}
 .nav button.on{color:var(--verde-esc)}
+.nav button{position:relative}
+.ponto-nav{position:absolute;top:7px;left:calc(50% + 8px);width:10px;height:10px;border-radius:50%;background:var(--deve);border:2px solid var(--papel)}
+
+/* amigos */
+.com-amigo{color:#fff;background:rgba(255,255,255,.16);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
+.com-amigo:active{background:rgba(255,255,255,.28)}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;flex:none}
+.selo-atual{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--verde-claro);color:var(--verde-esc);font-size:12px;font-weight:700;vertical-align:2px}
+.topo.marca h1{flex:1}
 
 /* boas-vindas */
 .boas{padding:calc(56px + env(safe-area-inset-top)) 24px 32px}
@@ -235,17 +244,50 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 
 /* ============================================================
    ARMAZENAMENTO
-   Hoje: neste aparelho. A estrutura (lista de eventos) já está
-   usada também na sincronização entre os dois celulares.
+   Cada amigo é um "par" (você + ele), com os próprios eventos,
+   grupos e sincronização. O primeiro par continua na chave antiga
+   (equilibra:v1); os outros ficam em equilibra:par:<id>. A lista
+   de amigos e qual está aberto ficam em equilibra:amigos.
    ============================================================ */
-const KEY = 'equilibra:v1';
-let mem = null;
+const KEY = 'equilibra:v1', KEY_AMIGOS = 'equilibra:amigos', PRINCIPAL = 'principal';
+const chavePar = id => (!id || id === PRINCIPAL ? KEY : 'equilibra:par:' + id);
+const mem = {};
 const store = {
-  load() { try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch (e) {} return mem; },
-  save(d) { mem = d; try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
+  load(id) { const k = chavePar(id); try { const s = localStorage.getItem(k); if (s) return JSON.parse(s); } catch (e) {} return mem[k] || null; },
+  save(d) { if (!d) return; const k = chavePar(d.parId); mem[k] = d; try { localStorage.setItem(k, JSON.stringify(d)); } catch (e) {} },
+  remove(id) { const k = chavePar(id); delete mem[k]; try { localStorage.removeItem(k); } catch (e) {} }
 };
-let data = store.load();
-const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' } };
+function lerAmigos() {
+  let a = null;
+  try { a = JSON.parse(localStorage.getItem(KEY_AMIGOS) || 'null'); } catch (e) {}
+  if (!a || !Array.isArray(a.ids)) a = mem[KEY_AMIGOS] || { atual: PRINCIPAL, ids: [PRINCIPAL] };
+  a.ids = a.ids.filter(id => store.load(id));
+  if (!a.ids.includes(a.atual)) a.atual = a.ids[0] || PRINCIPAL;
+  return a;
+}
+function salvarAmigos() { mem[KEY_AMIGOS] = amigos; try { localStorage.setItem(KEY_AMIGOS, JSON.stringify(amigos)); } catch (e) {} }
+let amigos = lerAmigos();
+const idDe = dd => (dd && dd.parId) || PRINCIPAL;
+function carregarPar(id) { const d = store.load(id); if (d && id && id !== PRINCIPAL) d.parId = id; return migrarSync(d); }
+function registrarPar(dd) { const id = idDe(dd); if (!amigos.ids.includes(id)) amigos.ids.push(id); salvarAmigos(); }
+/* passa a mostrar outro amigo: salva o atual e zera o que está aberto na tela */
+function abrirPar(dd) {
+  if (data && data !== dd && idDe(data) !== idDe(dd)) store.save(data);
+  data = dd; amigos.atual = idDe(dd); salvarAmigos();
+  Object.assign(ui, { view: null, tab: 'grupos', busca: '', buscaAtiv: '', soPend: false, pedido: null });
+  ui.pedidos[amigos.atual] = null;
+  setSync('', '');
+}
+/* um amigo novo reaproveita a chave da digital deste aparelho (não precisa cadastrar a digital de novo) */
+function copiarChaveDigital(dd) {
+  if (!data || !data.cidLocal) return;
+  const k = data.eventos.find(e => e.tipo === 'chave' && e.autor === data.config.eu && e.dados && e.dados.cid === data.cidLocal);
+  if (!k) return;
+  dd.cidLocal = data.cidLocal;
+  dd.eventos.push({ id: uid(), tipo: 'chave', autor: dd.config.eu, ts: Date.now(), dados: { cid: k.dados.cid, pub: k.dados.pub } });
+}
+let data = carregarPar(amigos.atual);
+const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' }, pedidos: {} };
 let sheetEstado = null;
 let confirmCb = null;
 let pararSheet = null; /* desliga câmera ou temporizador da folha aberta */
@@ -367,11 +409,11 @@ function addEvento(e) {
 }
 /* conta qualquer despesa ou pagamento não apagado, confirmado ou não */
 const grupoTemConteudo = (desp, pag, gid) => [...desp.values(), ...pag.values()].some(x => !x.apagada && !x.apagado && (x.grupo === gid || (x.proj && x.proj.grupo === gid)));
-function derivar() {
-  const evs = [...data.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
+function derivar(dd = data) {
+  const evs = [...dd.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
   const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
   const desp = new Map(), pag = new Map(), coms = [], tipos = new Map();
-  const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), gdels = new Map(), verif = data.verif || {};
+  const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), gdels = new Map(), verif = dd.verif || {};
   const nova = (e, tipo, item, k) => { const r = { id: e.id, item, k, tipo, autor: e.autor, ts: e.ts, dados: e.dados || {}, assin: e.assin }; rev.set(e.id, r); return r; };
   const juntar = (m, k, e) => { if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
   for (const e of evs) {
@@ -523,25 +565,25 @@ function msgBio(er) {
 }
 /* confere as assinaturas (de quem fez e de quem confirmou) e guarda o resultado só neste aparelho */
 let vp = Promise.resolve();
-const verificarTudo = () => (vp = vp.then(_verificar).catch(() => {}));
-async function _verificar() {
-  if (!data || !suporteDigital()) return;
-  data.verif = data.verif || {};
-  const porId = new Map(data.eventos.map(e => [e.id, e]));
+const verificarTudo = (dd = data) => (vp = vp.then(() => _verificar(dd)).catch(() => {}));
+async function _verificar(dd) {
+  if (!dd || !suporteDigital()) return;
+  dd.verif = dd.verif || {};
+  const porId = new Map(dd.eventos.map(e => [e.id, e]));
   let mudou = false;
-  for (const e of data.eventos) {
-    if (data.verif[e.id] !== undefined) continue;
+  for (const e of dd.eventos) {
+    if (dd.verif[e.id] !== undefined) continue;
     let rev, ass;
     if (e.tipo === 'confirma' && e.dados) { const r = porId.get(e.dados.rev); if (!r || !REVT[r.tipo]) continue; rev = r; ass = e.dados.ass; }
     else if (e.assin && REVT[e.tipo]) { rev = e; ass = e.assin; }
     else continue;
-    const k = data.eventos.find(x => x.tipo === 'chave' && x.autor === e.autor && ass && x.dados.cid === ass.cid);
+    const k = dd.eventos.find(x => x.tipo === 'chave' && x.autor === e.autor && ass && x.dados.cid === ass.cid);
     if (!k) continue;
     let ok = false;
     try { ok = await verificarAss(ass, revDe(rev), k.dados.pub); } catch (er) { ok = false; }
-    data.verif[e.id] = ok; mudou = true;
+    dd.verif[e.id] = ok; mudou = true;
   }
-  if (mudou) { store.save(data); renderSeguro(); }
+  if (mudou) { store.save(dd); if (dd === data) renderSeguro(); }
 }
 
 /* ---- estado das versões (usado nas telas) ---- */
@@ -698,9 +740,9 @@ function calcDevido(tipo, total, ent, id) {
    a mesclagem não duplica.
    ============================================================ */
 const CAMPOS = ['grupo', 'desc', 'valor', 'cat', 'pagouModo', 'pagou', 'tipo', 'ent', 'devido', 'nota'];
-function gerarRecorrentes() {
-  const D = derivar();
-  const ids = new Set(data.eventos.map(e => e.id));
+function gerarRecorrentes(dd = data) {
+  const D = derivar(dd);
+  const ids = new Set(dd.eventos.map(e => e.id));
   const h = hoje(); let novos = 0;
   for (const d of D.desp.values()) {
     if (d.apagada || !d.valido || !d.rec || d.origem) continue; /* só repete despesas já confirmadas */
@@ -711,11 +753,11 @@ function gerarRecorrentes() {
       if (ids.has(id)) continue;
       const dados = { data: dt, rec: null, origem: d.id };
       CAMPOS.forEach(k => { dados[k] = d[k]; });
-      data.eventos.push({ id, tipo: 'despesa', autor: d.autor, ts: new Date(dt + 'T12:00:00').getTime(), dados });
+      dd.eventos.push({ id, tipo: 'despesa', autor: d.autor, ts: new Date(dt + 'T12:00:00').getTime(), dados });
       ids.add(id); novos++;
     }
   }
-  if (novos) store.save(data);
+  if (novos) store.save(dd);
 }
 function fim() { if (data) gerarRecorrentes(); render(); agendarSync(); verificarTudo(); }
 
@@ -728,7 +770,8 @@ function topo(titulo, op = {}) {
 function topoMarca() {
   const pend = ui.sync.estado === 'pendente' || ui.sync.estado === 'erro';
   const sy = data && data.sync && data.sync.url ? `<button class="ic ${pend ? 'pend' : ''}" data-a="sync" aria-label="Sincronizar">⟳</button>` : '';
-  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${sy}</header>`;
+  const com = data ? `<button class="com-amigo" data-a="tab" data-t="amigos" aria-label="Trocar de amigo">com ${esc(nome(OUT()))} ▾</button>` : '';
+  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${sy}</header>`;
 }
 
 function telaBoas() {
@@ -744,9 +787,89 @@ function telaBoas() {
 
 function navInferior() {
   const it = (t, ic, r) => `<button data-a="tab" data-t="${t}" class="${ui.tab === t ? 'on' : ''}" ${ui.tab === t ? 'aria-current="page"' : ''}><span aria-hidden="true">${ic}</span>${r}</button>`;
-  return `<nav class="nav" aria-label="Principal">${it('grupos', '👥', 'Grupos')}${it('atividade', '📋', 'Atividade')}${it('conta', '👤', 'Conta')}</nav>`;
+  const ponto = precisaAtencao() ? '<i class="ponto-nav" aria-label="há algo esperando você"></i>' : '';
+  return `<nav class="nav" aria-label="Principal">${it('grupos', '👥', 'Grupos')}${it('amigos', '👫', 'Amigos').replace('</span>', '</span>' + ponto)}${it('atividade', '📋', 'Atividade')}${it('conta', '👤', 'Conta')}</nav>`;
 }
 
+/* ---- amigos: cada um é um par separado (você + ele) ---- */
+function resumoPar(id) {
+  const dd = id === amigos.atual ? data : carregarPar(id);
+  if (!dd) return null;
+  const D = derivar(dd), eu = dd.config.eu, ou = eu === 'a' ? 'b' : 'a';
+  let s = 0, n = 0;
+  for (const g of gruposAtivos(D)) { s += saldoGrupo(D, g.id)[eu]; n += contarPendentes(D, g.id); }
+  const esperam = [...D.rev.values()].filter(r => r.st === 'pendente' && !r.sup && r.autor !== eu).length;
+  const pedido = id === amigos.atual ? ui.pedido : ui.pedidos[id];
+  return { id, s, n, esperam, pedido, nome: dd.config.nomes[ou] || '?', sync: parAtivo(dd), atual: id === amigos.atual };
+}
+const corAvatar = n => CARTOES[[...String(n)].reduce((t, c) => t + c.charCodeAt(0), 0) % CARTOES.length].c;
+const avatar = n => `<span class="avatar" style="background:${corAvatar(n)}" aria-hidden="true">${esc([...String(n).trim()][0] || '?').toUpperCase()}</span>`;
+function precisaAtencao() {
+  return amigos.ids.some(id => { if (id === amigos.atual) return false; const r = resumoPar(id); return r && (r.esperam || r.pedido); });
+}
+function telaAmigos() {
+  const rs = amigos.ids.map(resumoPar).filter(Boolean);
+  const total = rs.reduce((t, r) => t + r.s, 0);
+  const banner = total > 0 ? { cls: 'recebe', t: `No total, te devem ${R(total)}` } : total < 0 ? { cls: 'deve', t: `No total, você deve ${R(-total)}` } : { cls: 'quite', t: 'Tudo certo com todos' };
+  const linhas = rs.map(r => {
+    const f = r.s > 0 ? `<span class="recebe">deve ${R(r.s)} a você</span>` : r.s < 0 ? `<span class="deve">você deve ${R(-r.s)}</span>` : '<span class="quite">tudo certo</span>';
+    const extra = [
+      r.pedido ? '<span class="st pend">📲 pedido de conexão</span>' : '',
+      r.esperam ? `<span class="st pend">⏳ ${r.esperam} esperando você</span>` : r.n ? `<span class="st pend">⏳ ${r.n} ${r.n > 1 ? 'pendentes' : 'pendente'}</span>` : '',
+      r.sync ? '' : '<span class="quite">só neste aparelho</span>'
+    ].filter(Boolean).join(' · ');
+    return `<button class="linha${r.esperam || r.pedido ? ' pend' : ''}" data-a="abrirAmigo" data-id="${esc(r.id)}">${avatar(r.nome)}<span class="mid"><span class="t">${esc(r.nome)}${r.atual ? ' <span class="selo-atual">aberto</span>' : ''}</span><span class="s">${f}${extra ? ' · ' + extra : ''}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
+  }).join('');
+  return topo('Amigos') +
+    `<section class="banner ${banner.cls}"><p class="rotulo">Saldo com todos os amigos</p><p class="grande">${esc(banner.t)}</p></section>
+    <h2 class="sec">Seus amigos</h2>${linhas}
+    <button class="btn cheio" data-a="novoAmigo">+ Adicionar amigo</button>
+    <p class="explica" style="padding:0 16px">Cada amigo tem os próprios grupos, despesas e saldo com você. Toque em um amigo para abrir.</p>`;
+}
+function sheetNovoAmigo() {
+  const temServidor = parAtivo(data) || amigos.ids.some(id => parAtivo(carregarPar(id)));
+  sheetEstado = { amigo: true };
+  return `<h2>Adicionar amigo</h2><div class="erro" id="erro" role="alert" hidden></div>
+    <label class="campo"><span>Nome do amigo</span><input id="am-nome" maxlength="24" autocomplete="off" autofocus></label>
+    <button class="btn" style="width:100%" data-a="criarAmigo">${temServidor ? '📲 Criar e mostrar o QR' : 'Adicionar'}</button>
+    <p class="explica" style="margin-top:8px">${temServidor ? 'O amigo abre o Equilibra no celular dele, toca em “Escanear QR” e você autoriza com a sua digital.' : 'Sem sincronização ativa, o amigo fica só neste aparelho. Ative a sincronização em Conta para conectar o celular dele.'}</p>
+    <div class="ou">ou</div>
+    <button class="btn-sec" style="width:100%" data-a="escanear">📷 Ler o QR do amigo</button>
+    <p class="explica" style="margin-top:8px">Use se o amigo já usa o Equilibra e vai mostrar o QR no celular dele.</p>
+    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button></div>`;
+}
+async function criarAmigo() {
+  if (bioOcupado) return;
+  const n = (($('#am-nome') || {}).value || '').trim();
+  if (!n) return erroForm('Escreva o nome do amigo.');
+  const eu = nome(EU());
+  if (n.toLowerCase() === String(eu).toLowerCase()) return erroForm('Use um nome diferente do seu.');
+  const base = parAtivo(data) ? data : amigos.ids.map(carregarPar).find(parAtivo);
+  const dd = { v: 2, parId: uid(), config: { nomes: { a: eu, b: n }, eu: 'a', nomesTs: Date.now() }, eventos: [] };
+  copiarChaveDigital(dd);
+  if (base) {
+    const token = novaChave();
+    try {
+      bioOcupado = true; toast('Criando…');
+      const j = await chamar(base.sync, { acao: 'novoEspaco', t2: token, autor: 'a' });
+      dd.sync = { url: base.sync.url, token, espaco: j.espaco, ultima: 0, enviado: '', recuperado: true };
+    } catch (e) { return erroForm(msgErro(e)); } finally { bioOcupado = false; }
+  }
+  store.save(dd); registrarPar(dd); abrirPar(dd); fecharSheet(); fim();
+  if (base) { await sincronizar(false); convidar(); }
+  else toast(`${n} adicionado. Ative a sincronização em Conta para conectar o celular dele.`);
+}
+function removerAmigo() {
+  const n = nome(OUT());
+  confirmar(`Remover ${n} deste aparelho? Os grupos e despesas com ${n} somem só daqui; se a sincronização estiver ativa, continuam guardados no servidor.`, 'Remover', () => {
+    const id = amigos.atual;
+    store.remove(id); amigos.ids = amigos.ids.filter(x => x !== id);
+    const prox = amigos.ids.map(carregarPar).find(Boolean);
+    if (prox) abrirPar(prox);
+    else { data = null; amigos = { atual: PRINCIPAL, ids: [PRINCIPAL] }; salvarAmigos(); ui.view = null; ui.tab = 'grupos'; }
+    toast(`${n} removido deste aparelho.`); render(); rolar();
+  });
+}
 function telaGrupos(D) {
   let total = 0;
   const gs = gruposAtivos(D);
@@ -758,7 +881,7 @@ function telaGrupos(D) {
   }).join('');
   const f = fraseSaldo(total);
   return topoMarca() +
-    `<section class="banner ${f.cls}"><p class="rotulo">Saldo geral</p><p class="grande">${esc(f.t)}</p>${avisoPendentes(D, gs.map(g => g.id))}${total ? '<button class="btn" data-a="acertar">Acertar contas</button>' : ''}</section>
+    `<section class="banner ${f.cls}"><p class="rotulo">${amigos.ids.length > 1 ? 'Saldo com ' + esc(nome(OUT())) : 'Saldo geral'}</p><p class="grande">${esc(f.t)}</p>${avisoPendentes(D, gs.map(g => g.id))}${total ? '<button class="btn" data-a="acertar">Acertar contas</button>' : ''}</section>
     <h2 class="sec">Grupos</h2>${linhas}
     <button class="btn-sec cheio" data-a="novoGrupo">Criar grupo</button>`;
 }
@@ -907,7 +1030,7 @@ function telaAtividade(D) {
   const nv = esperamVoce(D);
   const filtro = `<div class="faixa" style="padding-top:12px"><button data-a="filtrarPend" class="${ui.soPend ? 'on' : ''}${nv ? ' ponto' : ''}" aria-pressed="${!!ui.soPend}">⏳ Só pendentes${nv ? `<span class="sr"> (${nv} esperando você)</span>` : ''}</button></div>`;
   const busca = `<div class="busca" style="padding-top:12px">${LUPA}<input id="busca-ativ" type="search" placeholder="Buscar: valor, descrição, comentário…" aria-label="Buscar na atividade" value="${esc(ui.buscaAtiv || '')}" autocomplete="off"></div>`;
-  return topo('Atividade') + busca + filtro + `<div id="lista-ativ">${listaAtividade(D)}</div>`;
+  return topo(amigos.ids.length > 1 ? `Atividade · ${nome(OUT())}` : 'Atividade') + busca + filtro + `<div id="lista-ativ">${listaAtividade(D)}</div>`;
 }
 function listaAtividade(D) {
   let evs = [...D.evs].reverse();
@@ -991,8 +1114,10 @@ function telaConta() {
   const quemSou = data.sync
     ? `<p class="explica">Neste aparelho você é <b>${esc(nome(EU()))}</b>.</p>`
     : `<label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>`;
+  const varios = amigos.ids.length > 1;
   return topo('Conta') + `
-  <div class="bloco">${blocoSync()}
+  <div class="bloco">${varios ? `<p class="caixa" style="margin:12px 0 0">Sincronização, nomes e tipos abaixo valem para <b>${esc(nome(OUT()))}</b>. Para outro amigo, abra-o em Amigos.</p>` : ''}
+    ${blocoSync()}
     ${blocoDigital()}
     <h2>Nomes</h2>
     <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
@@ -1006,7 +1131,8 @@ function telaConta() {
     <button class="opcao" data-a="csv" data-g="">📄 Exportar tudo em CSV</button>
     <button class="opcao" data-a="exportar">💾 Baixar backup (JSON)</button>
     <button class="opcao" data-a="importar">📥 Importar backup (mescla com os dados atuais)</button>
-    <button class="opcao deve" data-a="resetar">🗑️ Apagar os dados deste aparelho</button>
+    ${varios ? `<button class="opcao deve" data-a="removerAmigo">👋 Remover ${esc(nome(OUT()))} deste aparelho</button>` : ''}
+    <button class="opcao deve" data-a="resetar">🗑️ Apagar os dados deste aparelho${varios ? ' (todos os amigos)' : ''}</button>
   </div>`;
 }
 
@@ -1272,9 +1398,17 @@ const AC = {
     if (!a || !b) return toast('Preencha os dois nomes.');
     if (a.toLowerCase() === b.toLowerCase()) return toast('Use nomes diferentes.');
     data = { v: 1, config: { nomes: { a, b }, eu: 'a' }, eventos: [] };
-    store.save(data); render(); rolar();
+    store.save(data); amigos.atual = PRINCIPAL; registrarPar(data); render(); rolar();
   },
-  tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; ui.buscaAtiv = ''; render(); rolar(); },
+  novoAmigo() { abrirSheet(sheetNovoAmigo()); },
+  criarAmigo() { criarAmigo(); },
+  abrirAmigo(d) {
+    if (d.id === amigos.atual) { ui.tab = 'grupos'; ui.view = null; render(); return rolar(); }
+    const dd = carregarPar(d.id); if (!dd) return;
+    abrirPar(dd); fim(); rolar();
+  },
+  removerAmigo() { removerAmigo(); },
+  tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; ui.buscaAtiv = ''; render(); rolar(); if (d.t === 'amigos') sincronizarOutros(); },
   filtrarPend() { ui.soPend = !ui.soPend; render(); },
   tema(d) { aplicarTema(d.v); render(); },
   abrirGrupo(d) { ui.view = { t: 'grupo', id: d.id }; ui.busca = ''; render(); rolar(); },
@@ -1431,7 +1565,12 @@ const AC = {
   exportar() { baixar('equilibra-backup.json', JSON.stringify(data), 'application/json'); toast('Backup gerado.'); },
   importar() { $('#arquivo').click(); },
   resetar() {
-    confirmar('Apagar os dados deste aparelho? Se a sincronização estiver ativa, os dados continuam guardados no servidor.', 'Apagar', () => { data = null; store.save(null); ui.view = null; ui.tab = 'grupos'; render(); });
+    const varios = amigos.ids.length > 1;
+    confirmar(`Apagar os dados deste aparelho${varios ? ', de todos os amigos' : ''}? Se a sincronização estiver ativa, os dados continuam guardados no servidor.`, 'Apagar', () => {
+      amigos.ids.forEach(id => store.remove(id)); store.remove(PRINCIPAL);
+      amigos = { atual: PRINCIPAL, ids: [PRINCIPAL] }; salvarAmigos();
+      data = null; ui.pedidos = {}; ui.view = null; ui.tab = 'grupos'; render();
+    });
   },
   salvarNomes() {
     const a = $('#c-a').value.trim(), b = $('#c-b').value.trim();
@@ -1611,33 +1750,49 @@ try { localStorage.removeItem('equilibra:token'); } catch (e) {}
 let sincronizando = false, syncT = null, bioOcupado = false, entradaId = 0;
 
 /* conexões antigas (com chave secreta digitada) precisam ser ativadas de novo; o endereço é aproveitado */
-if (data && data.sync && !data.sync.token) {
-  data.sync = { url: data.sync.url || '', token: '', espaco: '', ultima: 0, enviado: '' };
-  store.save(data);
+function migrarSync(dd) {
+  if (dd && dd.sync && !dd.sync.token) { dd.sync = { url: dd.sync.url || '', token: '', espaco: '', ultima: 0, enviado: '' }; store.save(dd); }
+  return dd;
 }
-const syncAtiva = () => !!(data && data.sync && data.sync.url && data.sync.token);
+migrarSync(data);
+const parAtivo = dd => !!(dd && dd.sync && dd.sync.url && dd.sync.token);
+const syncAtiva = () => parAtivo(data);
 const novaChave = (n = 32) => b64u.enc(crypto.getRandomValues(new Uint8Array(n)));
 const URL_SCRIPT = /^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/;
+const outroDe = dd => (dd.config.eu === 'a' ? 'b' : 'a');
 
 function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h) + ':' + s.length; }
-function montarMeu() {
-  const base = { v: 2, espaco: data.sync.espaco, autor: EU(), config: { nomes: data.config.nomes, ts: data.config.nomesTs || 0 }, eventos: data.eventos.filter(e => e.autor === EU()) };
+function montarMeu(dd) {
+  const eu = dd.config.eu;
+  const base = { v: 2, espaco: dd.sync.espaco, autor: eu, config: { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0 }, eventos: dd.eventos.filter(e => e.autor === eu) };
   return { hash: hash(JSON.stringify(base)), obj: { ...base, atualizado: Date.now() } };
 }
-/* junta eventos vindos do servidor; só aceita os do autor esperado */
-function mesclar(arq, autor) {
-  let n = 0; const ids = new Set(data.eventos.map(e => e.id));
+/* junta eventos vindos do servidor; só aceita os do autor esperado (ou de qualquer um, se autor = null) */
+function mesclar(dd, arq, autor) {
+  let n = 0; const ids = new Set(dd.eventos.map(e => e.id));
   for (const e of (arq.eventos || [])) {
-    if (e && e.id && e.tipo && e.autor === autor && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
+    if (e && e.id && e.tipo && (autor === null || e.autor === autor) && !ids.has(e.id)) { dd.eventos.push(e); ids.add(e.id); n++; }
   }
   return n;
 }
-function aplicarNomes(c) {
-  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (data.config.nomesTs || 0)) {
-    data.config.nomes = { a: c.nomes.a, b: c.nomes.b }; data.config.nomesTs = c.ts;
+function aplicarNomes(dd, c) {
+  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (dd.config.nomesTs || 0)) {
+    dd.config.nomes = { a: c.nomes.a, b: c.nomes.b }; dd.config.nomesTs = c.ts;
   }
 }
-function mesclarDoOutro(arq) { const n = mesclar(arq, OUT()); aplicarNomes(arq.config); return n; }
+function mesclarDoOutro(dd, arq) { const n = mesclar(dd, arq, outroDe(dd)); aplicarNomes(dd, arq.config); return n; }
+/* sincroniza um amigo (par) com o servidor dele; não mexe na tela nem salva */
+async function syncPar(dd) {
+  const s = dd.sync, m = montarMeu(dd), enviar = m.hash !== s.enviado;
+  /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
+  const j = await chamar(s, { acao: 'sync', meu: enviar ? m.obj : undefined, recuperar: s.recuperado ? undefined : true });
+  if (j.meu) { mesclar(dd, j.meu, dd.config.eu); aplicarNomes(dd, j.meu.config); }
+  s.recuperado = true; if (j.espaco) s.espaco = j.espaco;
+  const novos = j.outro ? mesclarDoOutro(dd, j.outro) : 0;
+  if (enviar) s.enviado = m.hash;
+  s.ultima = Date.now();
+  return { j, novos };
+}
 async function chamar(s, corpo) {
   /* Sem cabeçalhos: o navegador envia como texto simples e o Apps Script aceita sem bloqueio de CORS. */
   const r = await fetch(s.url, { method: 'POST', body: JSON.stringify({ t: s.token, ...corpo }), redirect: 'follow' });
@@ -1660,7 +1815,7 @@ function msgErro(e) {
   if (m === 'convite-usado') return 'Este QR já foi lido por outro celular. Peça um QR novo.';
   if (m === 'resposta-invalida') return 'O endereço não respondeu como esperado. Confira se o Apps Script foi publicado (nova versão) com acesso “Qualquer pessoa”.';
   if (m === 'ocupado') return 'O servidor está ocupado. Tente de novo em instantes.';
-  if (m === 'dados') return 'O servidor recusou os dados enviados.';
+  if (m === 'dados') return 'O servidor recusou os dados enviados. Se você acabou de atualizar o app, publique também a nova versão do Apps Script.';
   if (semRede(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
   return m;
 }
@@ -1670,28 +1825,46 @@ function agendarSync() {
 }
 async function sincronizar(interativo) {
   if (!syncAtiva() || sincronizando) return;
+  const dd = data; /* se a pessoa trocar de amigo no meio, os dados continuam indo para o par certo */
   sincronizando = true; setSync('sinc', 'sincronizando…');
   let novos = 0;
   try {
-    const s = data.sync, m = montarMeu(), enviar = m.hash !== s.enviado;
-    /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
-    const j = await chamar(s, { acao: 'sync', meu: enviar ? m.obj : undefined, recuperar: s.recuperado ? undefined : true });
-    if (j.meu) { mesclar(j.meu, EU()); aplicarNomes(j.meu.config); }
-    s.recuperado = true; if (j.espaco) s.espaco = j.espaco;
-    if (j.outro) novos = mesclarDoOutro(j.outro);
-    if (enviar) s.enviado = m.hash;
-    s.ultima = Date.now(); store.save(data);
-    setSync('ok', j.outro ? '' : `${nome(OUT())} ainda não conectou`);
-    verPedido(j.pedido);
+    const r = await syncPar(dd); novos = r.novos;
+    store.save(dd);
+    if (dd !== data) return;
+    setSync('ok', r.j.outro ? '' : `${nome(OUT())} ainda não conectou`);
+    verPedido(r.j.pedido);
     if (novos && interativo) toast(`${novos} novidade${novos > 1 ? 's' : ''} de ${nome(OUT())}.`);
     else if (interativo) toast('Tudo sincronizado.');
   } catch (e) {
+    if (dd !== data) return;
     const t = msgErro(e); setSync('erro', t); if (interativo && t) toast(t);
   } finally {
     sincronizando = false;
-    if (novos) verificarTudo();
-    if (novos || ui.tab === 'conta' || ui.sync.estado !== 'ok') renderSeguro();
+    if (novos) verificarTudo(dd);
+    if (dd === data && (novos || ui.tab === 'conta' || ui.sync.estado !== 'ok')) renderSeguro();
   }
+}
+/* os outros amigos sincronizam em segundo plano, para a lista de Amigos mostrar saldos e pedidos atualizados */
+let syncOutros = false;
+async function sincronizarOutros() {
+  if (syncOutros || !data) return;
+  syncOutros = true; let mudou = false;
+  try {
+    for (const id of [...amigos.ids]) {
+      if (id === amigos.atual) continue;
+      const dd = carregarPar(id); if (!parAtivo(dd)) continue;
+      try {
+        const { j, novos } = await syncPar(dd);
+        gerarRecorrentes(dd);
+        if (id === amigos.atual && data) { mesclar(data, dd, null); store.save(data); } /* abriu este amigo enquanto sincronizava */
+        else store.save(dd);
+        const ped = j.pedido || null;
+        if (JSON.stringify(ped) !== JSON.stringify(ui.pedidos[id] || null)) { ui.pedidos[id] = ped; mudou = true; if (ped) toast(`📲 Pedido de conexão de ${dd.config.nomes[outroDe(dd)]}. Abra Amigos para autorizar.`); }
+        if (novos) { mudou = true; verificarTudo(dd); }
+      } catch (e) {}
+    }
+  } finally { syncOutros = false; if (mudou) renderSeguro(); }
 }
 function falhou(e) { const t = msgErro(e); if (t) toast(t); }
 
@@ -1705,9 +1878,13 @@ function ativarSync() {
 }
 async function executarAtivacao(url) {
   const token = novaChave();
+  /* se outro amigo já usa este servidor, pede um espaço novo nele; senão, cria o primeiro */
+  const base = amigos.ids.filter(id => id !== amigos.atual).map(carregarPar).find(x => parAtivo(x) && x.sync.url === url);
   let j;
-  try { toast('Ativando…'); j = await chamar({ url, token }, { acao: 'criar', autor: EU() }); }
-  catch (e) { return falhou(e); }
+  try {
+    toast('Ativando…');
+    j = base ? await chamar(base.sync, { acao: 'novoEspaco', t2: token, autor: EU() }) : await chamar({ url, token }, { acao: 'criar', autor: EU() });
+  } catch (e) { return falhou(e); }
   data.eventos.forEach(e => { if (e.autor !== EU()) e.autor = EU(); });
   data.v = 2;
   data.sync = { url, token, espaco: j.espaco, ultima: 0, enviado: '', recuperado: true };
@@ -1784,11 +1961,8 @@ function lerConvite(txt) {
   return { a: m[1], p: m[2], url: u };
 }
 async function entrarComConvite(c) {
+  /* se este aparelho já tem dados, quem leu o QR vira um amigo novo (não apaga nada) */
   const meu = ++entradaId;
-  if (data && (syncAtiva() || data.eventos.length)) {
-    ui.entrada = { erro: 'Este aparelho já tem dados ou já está conectado. Para entrar no espaço da outra pessoa, apague os dados deste aparelho (Conta › Apagar os dados deste aparelho) e leia o QR de novo.' };
-    return render();
-  }
   const eu = c.a === 'a' ? 'b' : 'a', s = { url: c.url, token: novaChave(), espaco: '', ultima: 0, enviado: '' };
   ui.entrada = { msg: 'Conectando…' }; render();
   try { await chamar(s, { acao: 'entrar', p: c.p }); }
@@ -1813,11 +1987,20 @@ async function entrarComConvite(c) {
 function concluirEntrada(j, s, eu, quemConvidou) {
   const o = j.outro, c = (o && o.config) || {};
   const nomes = c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' ? c.nomes : { a: 'Pessoa 1', b: 'Pessoa 2' };
-  data = { v: 2, config: { nomes: { a: nomes.a, b: nomes.b }, nomesTs: c.ts || 0, eu }, eventos: [], sync: { ...s, espaco: j.espaco || '', recuperado: true } };
-  if (j.meu) { mesclar(j.meu, eu); aplicarNomes(j.meu.config); }
-  if (o) mesclarDoOutro(o);
-  store.save(data);
-  ui.entrada = null; ui.tab = 'grupos'; ui.view = null;
+  const sync = { ...s, espaco: j.espaco || '', recuperado: true };
+  /* o mesmo amigo de antes (ex.: depois de desconectar)? então só reconecta */
+  let dd = amigos.ids.map(carregarPar).find(x => x && x.sync && j.espaco && x.sync.url === s.url && x.sync.espaco === j.espaco && x.config.eu === eu);
+  if (dd) dd.sync = sync;
+  else {
+    const substituir = !data || (!syncAtiva() && !data.eventos.length && amigos.ids.length <= 1);
+    dd = { v: 2, config: { nomes: { a: nomes.a, b: nomes.b }, nomesTs: c.ts || 0, eu }, eventos: [], sync };
+    if (!substituir) { dd.parId = uid(); copiarChaveDigital(dd); }
+  }
+  if (j.meu) { mesclar(dd, j.meu, eu); aplicarNomes(dd, j.meu.config); }
+  if (o) mesclarDoOutro(dd, o);
+  store.save(dd); registrarPar(dd);
+  ui.entrada = null;
+  abrirPar(dd);
   toast(`Conectado com ${nome(quemConvidou)}.`);
   fim();
 }
@@ -1912,9 +2095,9 @@ function render() {
   if (v && v.t === 'grupo') { html = telaGrupo(D, v.id); fab = `<button class="fab sozinho" data-a="novaDespesa" data-g="${esc(v.id)}">+ Adicionar despesa</button>`; }
   else if (v && v.t === 'despesa') html = telaDespesa(D, v.id);
   else {
-    html = ui.tab === 'atividade' ? telaAtividade(D) : ui.tab === 'conta' ? telaConta() : telaGrupos(D);
+    html = ui.tab === 'atividade' ? telaAtividade(D) : ui.tab === 'conta' ? telaConta() : ui.tab === 'amigos' ? telaAmigos() : telaGrupos(D);
     nav = navInferior();
-    if (ui.tab !== 'conta') fab = '<button class="fab" data-a="novaDespesa" data-g="">+ Adicionar despesa</button>';
+    if (ui.tab !== 'conta' && ui.tab !== 'amigos') fab = '<button class="fab" data-a="novaDespesa" data-g="">+ Adicionar despesa</button>';
   }
   app.innerHTML = html + fab + nav;
   ajustarHistorico();
@@ -1930,6 +2113,8 @@ abrirConviteDaUrl(); /* aberto pelo QR lido com a câmera do celular */
 window.addEventListener('hashchange', abrirConviteDaUrl);
 window.addEventListener('online', () => { if (data) agendarSync(); });
 setInterval(() => { if (!document.hidden && syncAtiva() && !sincronizando) sincronizar(false); }, 10000);
+setInterval(() => { if (!document.hidden && amigos.ids.length > 1) sincronizarOutros(); }, 30000);
+if (data && amigos.ids.length > 1) setTimeout(sincronizarOutros, 2000);
 if (data) verificarTudo();
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
