@@ -1556,7 +1556,7 @@ const semRede = m => /Failed to fetch|NetworkError|Load failed/.test(m);
 function msgErro(e) {
   const m = String((e && e.message) || e);
   if (m === 'chave') return 'Este celular foi desconectado do espaço. Para voltar, peça um QR novo à outra pessoa.';
-  if (m === 'ja-configurado') return 'Este servidor já tem um espaço. Para entrar nele, leia o QR de quem já está conectado. Para começar do zero, mova o arquivo “Equilibra - dados v2.json” do seu Google Drive para a lixeira.';
+  if (m === 'ja-configurado') return 'Este servidor já tem um espaço. Para entrar nele, leia o QR de quem já está conectado. Para começar do zero, rode a função “comecarDoZero” no Apps Script.';
   if (m === 'convite-invalido') return 'QR inválido ou expirado. Peça um QR novo.';
   if (m === 'convite-usado') return 'Este QR já foi lido por outro celular. Peça um QR novo.';
   if (m === 'resposta-invalida') return 'O endereço não respondeu como esperado. Confira se o Apps Script foi publicado (nova versão) com acesso “Qualquer pessoa”.';
