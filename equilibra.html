@@ -181,6 +181,18 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .com-amigo{color:#fff;background:rgba(255,255,255,.16);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:34px}
 .com-amigo:active{background:rgba(255,255,255,.28)}
 .avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;flex:none}
+img.avatar{object-fit:cover;background:var(--linha)}
+.avatar.mini{width:22px;height:22px;font-size:11px;display:inline-grid;vertical-align:middle}
+.avatar.g{width:76px;height:76px;font-size:32px}
+.com-amigo{display:inline-flex;align-items:center;gap:7px}
+.com-amigo span{overflow:hidden;text-overflow:ellipsis}
+.pessoa .quem{display:inline-flex;align-items:center;gap:8px}
+.perfil{display:flex;align-items:center;gap:18px;padding:18px 0 6px}
+.perfil-foto{position:relative;border-radius:50%;flex:none}
+.perfil-foto .cam{position:absolute;right:-4px;bottom:-2px;width:30px;height:30px;border-radius:9px;background:var(--papel);color:var(--tinta);display:grid;place-items:center;box-shadow:0 1px 5px rgba(0,0,0,.3)}
+.perfil-txt{min-width:0}
+.perfil-txt b{display:block;font-size:21px;line-height:1.2;overflow:hidden;text-overflow:ellipsis}
+.perfil-txt small{display:block;color:var(--suave);font-size:14px;margin-top:3px}
 .selo-atual{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--verde-claro);color:var(--verde-esc);font-size:12px;font-weight:700;vertical-align:2px}
 .topo.marca h1{flex:1}
 
@@ -236,6 +248,7 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 </div>
 <div id="toast" class="toast" role="status" hidden></div>
 <input type="file" id="arquivo" accept="application/json,.json" hidden>
+<input type="file" id="foto-arq" accept="image/*" hidden>
 <noscript>O Equilibra precisa de JavaScript para funcionar.</noscript>
 
 <script>
@@ -285,6 +298,13 @@ function copiarChaveDigital(dd) {
   if (!k) return;
   dd.cidLocal = data.cidLocal;
   dd.eventos.push({ id: uid(), tipo: 'chave', autor: dd.config.eu, ts: Date.now(), dados: { cid: k.dados.cid, pub: k.dados.pub } });
+}
+/* um amigo novo já começa com a sua foto de perfil */
+function copiarMinhaFoto(dd) {
+  const f = data && fotoDe(data, data.config.eu); if (!f) return;
+  const eu = dd.config.eu;
+  dd.config.fotos = { ...(dd.config.fotos || {}), [eu]: f };
+  dd.config.fotosTs = { ...(dd.config.fotosTs || {}), [eu]: (data.config.fotosTs || {})[data.config.eu] || Date.now() };
 }
 let data = carregarPar(amigos.atual);
 const ui = { tab: 'grupos', view: null, busca: '', sync: { estado: '', msg: '' }, pedidos: {} };
@@ -770,7 +790,7 @@ function topo(titulo, op = {}) {
 function topoMarca() {
   const pend = ui.sync.estado === 'pendente' || ui.sync.estado === 'erro';
   const sy = data && data.sync && data.sync.url ? `<button class="ic ${pend ? 'pend' : ''}" data-a="sync" aria-label="Sincronizar">⟳</button>` : '';
-  const com = data ? `<button class="com-amigo" data-a="tab" data-t="amigos" aria-label="Trocar de amigo">com ${esc(nome(OUT()))} ▾</button>` : '';
+  const com = data ? `<button class="com-amigo" data-a="tab" data-t="amigos" aria-label="Trocar de amigo">${avatar(nome(OUT()), fotoDe(data, OUT()), 'mini')}<span>${esc(nome(OUT()))}</span> ▾</button>` : '';
   return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${sy}</header>`;
 }
 
@@ -800,10 +820,16 @@ function resumoPar(id) {
   for (const g of gruposAtivos(D)) { s += saldoGrupo(D, g.id)[eu]; n += contarPendentes(D, g.id); }
   const esperam = [...D.rev.values()].filter(r => r.st === 'pendente' && !r.sup && r.autor !== eu).length;
   const pedido = id === amigos.atual ? ui.pedido : ui.pedidos[id];
-  return { id, s, n, esperam, pedido, nome: dd.config.nomes[ou] || '?', sync: parAtivo(dd), atual: id === amigos.atual };
+  return { id, s, n, esperam, pedido, nome: dd.config.nomes[ou] || '?', foto: fotoDe(dd, ou), sync: parAtivo(dd), atual: id === amigos.atual };
 }
 const corAvatar = n => CARTOES[[...String(n)].reduce((t, c) => t + c.charCodeAt(0), 0) % CARTOES.length].c;
-const avatar = n => `<span class="avatar" style="background:${corAvatar(n)}" aria-hidden="true">${esc([...String(n).trim()][0] || '?').toUpperCase()}</span>`;
+/* foto de perfil: só aceita imagem de verdade (data:image/jpeg|png|webp em base64) e pequena */
+const fotoValida = s => typeof s === 'string' && s.length < 80000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(s);
+const fotoDe = (dd, p) => (dd && dd.config.fotos && fotoValida(dd.config.fotos[p]) ? dd.config.fotos[p] : null);
+/* tam: '' (lista), 'mini' (dentro de texto) ou 'g' (perfil) */
+const avatar = (n, foto, tam = '') => (foto
+  ? `<img class="avatar ${tam}" src="${foto}" alt="" aria-hidden="true">`
+  : `<span class="avatar ${tam}" style="background:${corAvatar(n)}" aria-hidden="true">${esc([...String(n).trim()][0] || '?').toUpperCase()}</span>`);
 function precisaAtencao() {
   return amigos.ids.some(id => { if (id === amigos.atual) return false; const r = resumoPar(id); return r && (r.esperam || r.pedido); });
 }
@@ -818,7 +844,7 @@ function telaAmigos() {
       r.esperam ? `<span class="st pend">⏳ ${r.esperam} esperando você</span>` : r.n ? `<span class="st pend">⏳ ${r.n} ${r.n > 1 ? 'pendentes' : 'pendente'}</span>` : '',
       r.sync ? '' : '<span class="quite">só neste aparelho</span>'
     ].filter(Boolean).join(' · ');
-    return `<button class="linha${r.esperam || r.pedido ? ' pend' : ''}" data-a="abrirAmigo" data-id="${esc(r.id)}">${avatar(r.nome)}<span class="mid"><span class="t">${esc(r.nome)}${r.atual ? ' <span class="selo-atual">aberto</span>' : ''}</span><span class="s">${f}${extra ? ' · ' + extra : ''}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
+    return `<button class="linha${r.esperam || r.pedido ? ' pend' : ''}" data-a="abrirAmigo" data-id="${esc(r.id)}">${avatar(r.nome, r.foto)}<span class="mid"><span class="t">${esc(r.nome)}${r.atual ? ' <span class="selo-atual">aberto</span>' : ''}</span><span class="s">${f}${extra ? ' · ' + extra : ''}</span></span><span aria-hidden="true" class="quite">›</span></button>`;
   }).join('');
   return topo('Amigos') +
     `<section class="banner ${banner.cls}"><p class="rotulo">Saldo com todos os amigos</p><p class="grande">${esc(banner.t)}</p></section>
@@ -846,7 +872,7 @@ async function criarAmigo() {
   if (n.toLowerCase() === String(eu).toLowerCase()) return erroForm('Use um nome diferente do seu.');
   const base = parAtivo(data) ? data : amigos.ids.map(carregarPar).find(parAtivo);
   const dd = { v: 2, parId: uid(), config: { nomes: { a: eu, b: n }, eu: 'a', nomesTs: Date.now() }, eventos: [] };
-  copiarChaveDigital(dd);
+  copiarChaveDigital(dd); copiarMinhaFoto(dd);
   if (base) {
     const token = novaChave();
     try {
@@ -961,7 +987,7 @@ function telaDespesa(D, id) {
   const d = D.desp.get(id), g = D.grupos.get(d.grupo), c = cat(d.cat);
   const pessoas = [EU(), OUT()].map(p => {
     const pg = d.pagou[p], dv = d.devido[p];
-    return `<div class="pessoa"><span>${esc(quem(p))}</span><span>pagou ${R(pg)} · parte ${R(dv)}</span></div>`;
+    return `<div class="pessoa"><span class="quem">${avatar(nome(p), fotoDe(data, p), 'mini')}${esc(quem(p))}</span><span>pagou ${R(pg)} · parte ${R(dv)}</span></div>`;
   }).join('');
   const coms = D.coms.filter(x => x.alvo === id).map(x => `<div class="coment"><b>${esc(quem(x.autor))}</b> <small>${esc(quando(x.ts))}</small><p>${esc(x.texto)}</p></div>`).join('');
   const rec = d.rec ? `<span class="selo">Repete ${d.rec === 'mensal' ? 'todo mês' : 'toda semana'}</span>` : (d.origem ? '<span class="selo">Gerada por despesa recorrente</span>' : '');
@@ -1110,13 +1136,50 @@ function blocoTema() {
   return `<h2>Aparência</h2><div class="faixa" style="padding:0 0 6px">${op('auto', '📱 Automático')}${op('claro', '☀️ Claro')}${op('escuro', '🌙 Escuro')}</div>
     <p class="explica">Automático segue o modo claro ou escuro do celular.</p>`;
 }
+/* perfil: a sua foto vale para todos os amigos e aparece no celular deles */
+const CAMERA = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M8.5 5.5 10 3.8h4l1.5 1.7H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12.6" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+function blocoPerfil() {
+  const foto = fotoDe(data, EU());
+  return `<div class="perfil">
+    <button class="perfil-foto" data-a="trocarFoto" aria-label="${foto ? 'Trocar' : 'Escolher'} foto de perfil">${avatar(nome(EU()), foto, 'g')}<span class="cam">${CAMERA}</span></button>
+    <div class="perfil-txt"><b>${esc(nome(EU()))}</b><small>${foto ? 'Sua foto aparece no celular dos seus amigos.' : 'Toque na foto para escolher uma. Ela aparece no celular dos seus amigos.'}</small>
+    ${foto ? '<button class="btn-txt" style="padding:6px 0;min-height:36px;color:var(--suave)" data-a="removerFoto">Remover foto</button>' : ''}</div>
+  </div>`;
+}
+async function processarFoto(file) {
+  if (!file || !/^image\//.test(file.type)) return toast('Escolha uma imagem.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = url; });
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, lado = Math.min(w, h);
+    if (!lado) throw new Error('imagem');
+    const c = document.createElement('canvas'); c.width = c.height = 192; /* recorta o centro em quadrado e reduz */
+    c.getContext('2d').drawImage(img, (w - lado) / 2, (h - lado) / 2, lado, lado, 0, 0, 192, 192);
+    let q = 0.85, s = c.toDataURL('image/jpeg', q);
+    while (s.length > 60000 && q > 0.4) { q -= 0.15; s = c.toDataURL('image/jpeg', q); }
+    if (!fotoValida(s)) throw new Error('imagem');
+    salvarFoto(s); toast('Foto atualizada.');
+  } catch (e) { toast('Não foi possível usar esta imagem. Tente outra (JPG ou PNG).'); }
+  finally { URL.revokeObjectURL(url); }
+}
+function salvarFoto(foto) {
+  const ts = Date.now();
+  for (const id of amigos.ids) {
+    const dd = id === amigos.atual ? data : carregarPar(id); if (!dd) continue;
+    const eu = dd.config.eu;
+    dd.config.fotos = { ...(dd.config.fotos || {}), [eu]: foto };
+    dd.config.fotosTs = { ...(dd.config.fotosTs || {}), [eu]: ts };
+    store.save(dd);
+  }
+  render(); agendarSync(); sincronizarOutros();
+}
 function telaConta() {
   const quemSou = data.sync
     ? `<p class="explica">Neste aparelho você é <b>${esc(nome(EU()))}</b>.</p>`
     : `<label class="campo"><select id="c-eu" aria-label="Quem sou eu"><option value="a" ${EU() === 'a' ? 'selected' : ''}>${esc(nome('a'))}</option><option value="b" ${EU() === 'b' ? 'selected' : ''}>${esc(nome('b'))}</option></select></label>`;
   const varios = amigos.ids.length > 1;
   return topo('Conta') + `
-  <div class="bloco">${varios ? `<p class="caixa" style="margin:12px 0 0">Sincronização, nomes e tipos abaixo valem para <b>${esc(nome(OUT()))}</b>. Para outro amigo, abra-o em Amigos.</p>` : ''}
+  <div class="bloco">${blocoPerfil()}${varios ? `<p class="caixa" style="margin:12px 0 0">Sincronização, nomes e tipos abaixo valem para <b>${esc(nome(OUT()))}</b>. Para outro amigo, abra-o em Amigos.</p>` : ''}
     ${blocoSync()}
     ${blocoDigital()}
     <h2>Nomes</h2>
@@ -1408,6 +1471,8 @@ const AC = {
     abrirPar(dd); fim(); rolar();
   },
   removerAmigo() { removerAmigo(); },
+  trocarFoto() { $('#foto-arq').click(); },
+  removerFoto() { confirmar('Remover sua foto de perfil? Ela também some do celular dos seus amigos.', 'Remover', () => { salvarFoto(null); toast('Foto removida.'); }); },
   tab(d) { ui.tab = d.t; ui.view = null; ui.busca = ''; ui.buscaAtiv = ''; render(); rolar(); if (d.t === 'amigos') sincronizarOutros(); },
   filtrarPend() { ui.soPend = !ui.soPend; render(); },
   tema(d) { aplicarTema(d.v); render(); },
@@ -1602,6 +1667,7 @@ document.addEventListener('change', e => {
   else if (id === 'p-grupo') preencherPagamento();
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
+  else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
   else if (id && id.startsWith('q-')) atualizarHint();
 });
 document.addEventListener('input', e => {
@@ -1764,7 +1830,8 @@ const outroDe = dd => (dd.config.eu === 'a' ? 'b' : 'a');
 function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h) + ':' + s.length; }
 function montarMeu(dd) {
   const eu = dd.config.eu;
-  const base = { v: 2, espaco: dd.sync.espaco, autor: eu, config: { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0 }, eventos: dd.eventos.filter(e => e.autor === eu) };
+  const config = { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0, foto: fotoDe(dd, eu), fotoTs: (dd.config.fotosTs || {})[eu] || 0 };
+  const base = { v: 2, espaco: dd.sync.espaco, autor: eu, config, eventos: dd.eventos.filter(e => e.autor === eu) };
   return { hash: hash(JSON.stringify(base)), obj: { ...base, atualizado: Date.now() } };
 }
 /* junta eventos vindos do servidor; só aceita os do autor esperado (ou de qualquer um, se autor = null) */
@@ -1780,18 +1847,27 @@ function aplicarNomes(dd, c) {
     dd.config.nomes = { a: c.nomes.a, b: c.nomes.b }; dd.config.nomesTs = c.ts;
   }
 }
-function mesclarDoOutro(dd, arq) { const n = mesclar(dd, arq, outroDe(dd)); aplicarNomes(dd, arq.config); return n; }
+/* foto de perfil de p (só se for mais nova e for uma imagem válida; null = foto removida) */
+function aplicarFoto(dd, c, p) {
+  if (!c || typeof c.fotoTs !== 'number' || c.fotoTs <= ((dd.config.fotosTs || {})[p] || 0)) return false;
+  if (c.foto !== null && !fotoValida(c.foto)) return false;
+  dd.config.fotos = { ...(dd.config.fotos || {}), [p]: c.foto };
+  dd.config.fotosTs = { ...(dd.config.fotosTs || {}), [p]: c.fotoTs };
+  return true;
+}
+function mesclarDoOutro(dd, arq) { const n = mesclar(dd, arq, outroDe(dd)); aplicarNomes(dd, arq.config); aplicarFoto(dd, arq.config, outroDe(dd)); return n; }
 /* sincroniza um amigo (par) com o servidor dele; não mexe na tela nem salva */
 async function syncPar(dd) {
   const s = dd.sync, m = montarMeu(dd), enviar = m.hash !== s.enviado;
   /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
   const j = await chamar(s, { acao: 'sync', meu: enviar ? m.obj : undefined, recuperar: s.recuperado ? undefined : true });
-  if (j.meu) { mesclar(dd, j.meu, dd.config.eu); aplicarNomes(dd, j.meu.config); }
+  const fotosAntes = JSON.stringify(dd.config.fotos || {});
+  if (j.meu) { mesclar(dd, j.meu, dd.config.eu); aplicarNomes(dd, j.meu.config); aplicarFoto(dd, j.meu.config, dd.config.eu); }
   s.recuperado = true; if (j.espaco) s.espaco = j.espaco;
   const novos = j.outro ? mesclarDoOutro(dd, j.outro) : 0;
   if (enviar) s.enviado = m.hash;
   s.ultima = Date.now();
-  return { j, novos };
+  return { j, novos, fotoNova: fotosAntes !== JSON.stringify(dd.config.fotos || {}) };
 }
 async function chamar(s, corpo) {
   /* Sem cabeçalhos: o navegador envia como texto simples e o Apps Script aceita sem bloqueio de CORS. */
@@ -1830,6 +1906,7 @@ async function sincronizar(interativo) {
   let novos = 0;
   try {
     const r = await syncPar(dd); novos = r.novos;
+    if (r.fotoNova && dd === data) setTimeout(renderSeguro, 0);
     store.save(dd);
     if (dd !== data) return;
     setSync('ok', r.j.outro ? '' : `${nome(OUT())} ainda não conectou`);
@@ -1855,7 +1932,8 @@ async function sincronizarOutros() {
       if (id === amigos.atual) continue;
       const dd = carregarPar(id); if (!parAtivo(dd)) continue;
       try {
-        const { j, novos } = await syncPar(dd);
+        const { j, novos, fotoNova } = await syncPar(dd);
+        if (fotoNova) mudou = true;
         gerarRecorrentes(dd);
         if (id === amigos.atual && data) { mesclar(data, dd, null); store.save(data); } /* abriu este amigo enquanto sincronizava */
         else store.save(dd);
@@ -1996,7 +2074,8 @@ function concluirEntrada(j, s, eu, quemConvidou) {
     dd = { v: 2, config: { nomes: { a: nomes.a, b: nomes.b }, nomesTs: c.ts || 0, eu }, eventos: [], sync };
     if (!substituir) { dd.parId = uid(); copiarChaveDigital(dd); }
   }
-  if (j.meu) { mesclar(dd, j.meu, eu); aplicarNomes(dd, j.meu.config); }
+  if (j.meu) { mesclar(dd, j.meu, eu); aplicarNomes(dd, j.meu.config); aplicarFoto(dd, j.meu.config, eu); }
+  if (!fotoDe(dd, eu)) copiarMinhaFoto(dd);
   if (o) mesclarDoOutro(dd, o);
   store.save(dd); registrarPar(dd);
   ui.entrada = null;
