@@ -141,6 +141,9 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .campo>.moeda{display:flex;font-size:16px;font-weight:400;color:inherit;margin-bottom:0} /* gana de ".campo>span" */
 .moeda b{color:var(--suave);font-weight:600}
 .moeda input{border:0!important;min-width:0;flex:1;padding-left:8px!important}
+/* o contorno amarelo envolve o campo inteiro (com o "R$"), não só a parte digitável */
+.moeda:focus-within{outline:3px solid #f5b400;outline-offset:2px}
+.moeda input:focus,.moeda input:focus-visible{outline:none}
 .chk{display:flex;align-items:center;gap:10px;padding:10px 0;min-height:44px}
 .chk input{width:22px;height:22px;accent-color:var(--verde)}
 .dica{font-size:14px;color:var(--suave);margin:-4px 0 14px;min-height:20px}
@@ -1383,7 +1386,8 @@ function abrirSheet(html) {
   $('#sheetBody').innerHTML = html;
   $('#sheet').hidden = false;
   document.body.classList.add('trava');
-  const f = $('#sheetBody [autofocus]'); if (f) f.focus();
+  $('#sheetBody').scrollTop = 0; /* toda folha nova começa do topo */
+  const f = $('#sheetBody [autofocus]'); if (f) f.focus({ preventScroll: true });
   ajustarHistorico();
 }
 function fecharSheet() {
@@ -1428,7 +1432,7 @@ function formDespesa(d, gid) {
   <div class="erro" id="erro" role="alert" hidden></div>
   <div id="nf-area">${nfFormHTML()}</div>
   <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
-  <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}" ${novo ? 'autofocus' : ''}></label>
+  <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}"></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="f-valor" inputmode="decimal" placeholder="0,00" value="${v.valor ? fmtIn(v.valor) : ''}"></span></label>
   <div class="dupla">
     <label class="campo"><span>Data</span><input id="f-data" type="date" value="${esc(v.data)}"></label>
