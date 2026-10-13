@@ -255,6 +255,12 @@ img.avatar{object-fit:cover;background:var(--linha)}
 .faixa button.on{border-color:var(--verde);background:var(--verde-claro);color:var(--verde-esc)}
 .faixa button.ponto::after{content:"";position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:var(--deve);border:2px solid var(--papel)}
 .qr{display:flex;justify-content:center;margin:14px 0 6px}
+.rat{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--papel)}
+.rat .mid{flex:1;display:flex;flex-direction:column}
+.rat small{font-size:13px}
+.rat.ok{background:var(--recebe-bg);color:var(--recebe)}
+.rat.falta{background:var(--deve-bg);color:var(--deve)}
+#sheetBody .rat{border-radius:10px;margin-bottom:4px}
 .qr svg{width:min(270px,72vw);height:auto;border-radius:8px;transition:opacity .3s}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .st{font-weight:700}
@@ -488,15 +494,22 @@ function eventoValido(e, agora = Date.now()) {
       return opt(d.valor, x => cent(x) && x > 0) && opt(d.pagou, par) && opt(d.devido, par) && opt(d.desc, x => txt(x, 300)) &&
         opt(d.data, dia) && opt(d.nota, x => txt(x, 2000)) && opt(d.grupo, x => txt(x, 120)) && opt(d.cat, x => txt(x, 60)) &&
         opt(d.pagouModo, x => txt(x, 10)) && opt(d.tipo, x => txt(x, 10)) && opt(d.ent, obj) && opt(d.nf, obj) &&
-        opt(d.rec, x => x === 'mensal' || x === 'semanal') && opt(d.origem, x => txt(x, 120));
+        opt(d.rec, x => x === 'mensal' || x === 'semanal') && opt(d.origem, x => txt(x, 120)) && opt(d.rateio, rateioOk);
     }
-    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120));
+    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120)) && opt(d.rateio, x => txt(x, 120));
     case 'confirma': return txt(d.rev, 120) && obj(d.ass);
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
-    case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000);
+    case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000) && opt(d.rapida, x => x === true);
+    case 'rateio_st': return alvo && Array.isArray(d.l) && d.l.length <= 50 && d.l.every(x => obj(x) && txt(x.s, 5) && opt(x.g, cent) && opt(x.r, y => y === 1));
   }
   return true;
+}
+/* conta entre vários: id, total, pessoas (a 0 é quem pagou) e i = a linha do amigo deste par */
+function rateioOk(r) {
+  return !!r && typeof r === 'object' && typeof r.id === 'string' && /^[\w-]{4,60}$/.test(r.id) && Number.isSafeInteger(r.total) && r.total > 0 &&
+    Array.isArray(r.pessoas) && r.pessoas.length >= 2 && r.pessoas.length <= 50 && Number.isInteger(r.i) && r.i > 0 && r.i < r.pessoas.length &&
+    r.pessoas.every(p => !!p && typeof p.n === 'string' && p.n.length <= 40 && Number.isSafeInteger(p.v) && p.v >= 0);
 }
 /* conta qualquer despesa ou pagamento não apagado, confirmado ou não */
 const grupoTemConteudo = (desp, pag, gid) => [...desp.values(), ...pag.values()].some(x => !x.apagada && !x.apagado && (x.grupo === gid || (x.proj && x.proj.grupo === gid)));
@@ -671,7 +684,8 @@ async function _verificar(dd) {
     const k = dd.eventos.find(x => x.tipo === 'chave' && x.autor === e.autor && ass && x.dados.cid === ass.cid);
     if (!k) continue;
     let ok = false;
-    try { ok = await verificarAss(ass, revDe(rev), k.dados.pub); } catch (er) { ok = false; }
+    /* chave rápida só vale para assinatura rápida (e vice-versa): ninguém finge que usou a digital */
+    try { ok = ass.rapida ? k.dados.rapida === true && await verificarRapida(ass, revDe(rev), k.dados.pub) : !k.dados.rapida && await verificarAss(ass, revDe(rev), k.dados.pub); } catch (er) { ok = false; }
     dd.verif[e.id] = ok; mudou = true;
   }
   if (mudou) { store.save(dd); if (dd === data) renderSeguro(); }
@@ -684,7 +698,8 @@ function statusRev(r) {
     if (r.cf.retirada) return { cls: 'ok', txt: 'Retirado por quem criou' };
     if (r.cf.vazio) return { cls: 'ok', txt: 'Grupo vazio: apagado sem precisar de confirmação' };
     if (r.cf.auto) return { cls: 'ok', txt: 'Autorizada (despesa recorrente)' };
-    return { cls: 'ok', txt: `${ex ? 'Exclusão autorizada' : 'Autorizado'} por ${nome(r.cf.autor)} · ${quando(r.cf.ts)}` };
+    const rap = r.cf.dados && r.cf.dados.ass && r.cf.dados.ass.rapida ? ' sem digital ⚡' : '';
+    return { cls: 'ok', txt: `${ex ? 'Exclusão autorizada' : 'Autorizado'}${rap} por ${nome(r.cf.autor)} · ${quando(r.cf.ts)}` };
   }
   if (r.st === 'recusado') return { cls: 'rec', txt: `${ex ? 'Exclusão recusada' : 'Recusado'} por ${nome(o)} · ${quando(r.rc.ts)}` };
   if (r.sup) return { cls: '', txt: 'Substituída por uma alteração mais recente' };
@@ -744,7 +759,18 @@ function blocoDigital() {
   return `<h2>Confirmação por digital</h2>
     <p class="explica">Cada despesa, alteração ou exclusão é assinada com a digital de quem fez e só vale depois que a outra pessoa confirma com a digital dela.</p>
     <p class="estado ${ok ? 'ok' : 'falta'}">${!sup ? 'Este navegador não suporta' : ok ? 'Ativada neste aparelho' : 'Ainda não ativada'}</p>
-    ${!sup ? '' : `<button class="${ok ? 'btn-txt' : 'btn-sec'}" style="${ok ? 'color:var(--suave)' : ''}" data-a="ativarDigital">${ok ? 'Criar a chave de novo' : 'Ativar confirmação por digital'}</button>`}`;
+    ${!sup ? '' : `<button class="${ok ? 'btn-txt' : 'btn-sec'}" style="${ok ? 'color:var(--suave)' : ''}" data-a="ativarDigital">${ok ? 'Criar a chave de novo' : 'Ativar confirmação por digital'}</button>`}
+    <h2>⚡ Confirmação rápida</h2>
+    <p class="explica">Para confirmar na mesa sem pedir a digital: basta tocar em Confirmar. Vale só para este celular e para todos os amigos; quem recebe vê ⚡. Cuidado: quem pegar este celular desbloqueado pode confirmar dívidas em seu nome.</p>
+    <label class="chk"><input type="checkbox" id="c-rapida" ${rapidaAtiva() ? 'checked' : ''}> Confirmar sem digital neste celular</label>`;
+}
+async function ligarRapida(on) {
+  try {
+    if (on) await chaveRapida();
+    localStorage.setItem(KEY_RAPIDA, on ? '1' : '0');
+    toast(on ? 'Confirmação rápida ligada neste celular.' : 'Confirmação rápida desligada: volta a pedir a digital.');
+  } catch (e) { toast('Este celular não permite a confirmação rápida.'); }
+  fim();
 }
 
 /* saldo só com o que foi confirmado; com proj = true, como ficaria se tudo o que está pendente fosse confirmado */
@@ -1011,7 +1037,8 @@ function topoMarca() {
   const pend = ui.sync.estado === 'pendente' || ui.sync.estado === 'erro';
   const sy = data && data.sync && data.sync.url ? `<button class="ic ${pend ? 'pend' : ''}" data-a="sync" aria-label="Sincronizar">⟳</button>` : '';
   const com = data ? `<button class="com-amigo" data-a="tab" data-t="amigos" aria-label="Trocar de amigo">${avatar(nome(OUT()), fotoDe(data, OUT()), 'mini')}<span>${esc(nome(OUT()))}</span> ▾</button>` : '';
-  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${sy}</header>`;
+  const cam = data ? '<button class="ic" data-a="escanear" aria-label="Ler QR">📷</button>' : '';
+  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${cam}${sy}</header>`;
 }
 
 function telaBoas() {
@@ -1070,6 +1097,7 @@ function telaAmigos() {
     `<section class="banner ${banner.cls}"><p class="rotulo">Saldo com todos os amigos</p><p class="grande">${esc(banner.t)}</p></section>
     <h2 class="sec">Seus amigos</h2>${linhas}
     <button class="btn cheio" data-a="novoAmigo">+ Adicionar amigo</button>
+    ${rs.length > 1 ? '<button class="btn-sec cheio" data-a="formRateio">👥 Conta com vários amigos</button>' : ''}
     <p class="explica" style="padding:0 16px">Cada amigo tem os próprios grupos, despesas e saldo com você. Toque em um amigo para abrir.</p>`;
 }
 function sheetNovoAmigo() {
@@ -1217,6 +1245,7 @@ function telaDespesa(D, id) {
       <p class="meta">${esc(c.r)} · ${esc(dataLonga(d.data))}</p>
       <p class="meta">Adicionada por ${esc(quem(d.autor))} em ${esc(g ? g.nome : '')}${d.editado ? ' · editada' : ''}</p>
       <p class="meta">${esc(tipos[d.tipo] || '')}</p>${rec}${d.nota ? `<p style="margin-top:10px">${esc(d.nota)}</p>` : ''}</section>
+    ${rateioOk(d.rateio) ? blocoRateio(D, d) : ''}
     ${nfInfo(d.nf) ? `<section class="nf"><p class="nf-tit">🧾 Nota fiscal</p>${nfDetalheHTML(d.nf)}</section>` : ''}
     ${blocoStatus(d, D)}
     ${pessoas}
@@ -1471,6 +1500,7 @@ function formDespesa(d, gid) {
   const gs = gruposAtivos(D);
   return `<h2>${novo ? 'Nova despesa' : 'Editar despesa'}</h2>
   <div class="erro" id="erro" role="alert" hidden></div>
+  ${novo && amigos.ids.length > 1 ? '<button class="btn-sec" style="width:100%;margin-bottom:14px" data-a="formRateio">👥 Dividir com vários amigos</button>' : ''}
   <div id="nf-area">${nfFormHTML()}</div>
   <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}"></label>
@@ -1581,11 +1611,11 @@ function lerForm(id) {
 }
 
 /* --- pagamento --- */
-function formPagamento(gid) {
+function formPagamento(gid, conta) {
   const D = derivar(), gs = gruposAtivos(D);
   if (!gid) { const com = gs.find(g => saldoGrupo(D, g.id)[EU()] !== 0); gid = (com || gs[0]).id; }
-  sheetEstado = { pagamento: true };
-  return `<h2>Acertar contas</h2><div class="erro" id="erro" role="alert" hidden></div>
+  sheetEstado = { pagamento: true, rateio: conta ? conta.rateio.id : null };
+  return `<h2>${conta ? 'Paguei minha parte' : 'Acertar contas'}</h2><div class="erro" id="erro" role="alert" hidden></div>${conta ? `<p class="explica">Pagamento da sua parte de “${esc(conta.desc)}”. Vale quando ${esc(nome(OUT()))} confirmar que recebeu.</p>` : ''}
   <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Quem pagou</span><select id="p-dir"></select></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="p-valor" inputmode="decimal" placeholder="0,00"></span></label>
@@ -1776,8 +1806,8 @@ const AC = {
     const r = derivar().rev.get(d.rev); if (!r || r.autor === EU() || r.st !== 'pendente') return;
     bioOcupado = true;
     try {
-      const cid = await garantirChave();
-      const ass = await assinar({ item: r.item, id: r.id, tipo: r.tipo, autor: r.autor, dados: r.dados }, cid);
+      const rev = { item: r.item, id: r.id, tipo: r.tipo, autor: r.autor, dados: r.dados };
+      const ass = rapidaAtiva() ? await assinarRapido(rev) : await assinar(rev, await garantirChave());
       addEvento({ tipo: 'confirma', alvo: r.item, dados: { rev: r.id, ass } });
     } catch (er) { bioOcupado = false; return toast(msgBio(er)); }
     bioOcupado = false;
@@ -1798,6 +1828,15 @@ const AC = {
     const el = $('#coment'), t = el.value.trim(); if (!t) return;
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
+  formRateio() { abrirSheet(formRateio()); },
+  salvarRateio() { salvarRateio(); },
+  qrRateio(d) { qrRateio(d.id); },
+  pagarParte(d) {
+    const D = derivar(), x = D.desp.get(d.id); if (!x || !rateioOk(x.rateio)) return;
+    const e = estadoNoPar(D, x.rateio.id, EU(), OUT());
+    abrirSheet(formPagamento(x.grupo, x)); preencherPagamento();
+    $('#p-dir').value = `${EU()}>${OUT()}`; $('#p-valor').value = fmtIn(x.conta.devido[EU()] - (e.g || 0));
+  },
   acertar(d) { abrirSheet(formPagamento(d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : ''))); preencherPagamento(); },
   async salvarPagamento() {
     if (bioOcupado) return;
@@ -1805,6 +1844,7 @@ const AC = {
     if (!(valor > 0)) return erroForm('Informe um valor maior que zero.');
     const [de, para] = $('#p-dir').value.split('>');
     const dados = { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() };
+    if (sheetEstado.rateio) dados.rateio = sheetEstado.rateio;
     bioOcupado = true;
     try { await addEventoAssinado({ tipo: 'pagamento', dados }); }
     catch (er) { bioOcupado = false; return erroForm(msgBio(er)); }
@@ -1929,6 +1969,8 @@ document.addEventListener('change', e => {
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
   else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
   else if (id && id.startsWith('q-')) atualizarHint();
+  else if (id && id.startsWith('r-')) atualizarRateio();
+  else if (id === 'c-rapida') ligarRapida(e.target.checked);
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'busca-ativ') {
@@ -1938,6 +1980,7 @@ document.addEventListener('input', e => {
     ui.busca = e.target.value;
     if (ui.view && ui.view.t === 'grupo') $('#lista').innerHTML = listaGrupo(derivar(), ui.view.id, ui.busca);
   } else if (e.target.id === 't-nome' || e.target.id === 't-emoji') atualizarPrevia();
+  else if (sheetEstado && sheetEstado.rateio === true) atualizarRateio();
   else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
 });
 document.addEventListener('keydown', e => {
@@ -2065,6 +2108,255 @@ const QR = (() => {
 })();
 
 /* ============================================================
+   CONTA ENTRE VÁRIOS AMIGOS
+   Você paga a conta inteira; cada amigo marcado recebe, no par
+   que já existe com você, uma despesa com a parte dele. Todas
+   levam o mesmo dados.rateio (id, total, pessoas). Quem pagou
+   publica em cada par o estado de todos (evento rateio_st), e
+   assim cada um vê quem confirmou e quem pagou.
+   ============================================================ */
+const pares = () => amigos.ids.map(id => (id === amigos.atual ? data : carregarPar(id))).filter(Boolean);
+const ST_RATEIO = { p: 'pagou a conta', pago: '✔ pagou', conf: '✔ confirmou, falta pagar', pend: '⏳ não confirmou', rec: '❌ recusou', apag: 'retirada' };
+/* a primeira versão (a que criou) da despesa desta conta neste par */
+const revRateio = (D, rid) => [...D.rev.values()].find(r => r.tipo === 'criar' && r.k === 'd' && rateioOk(r.dados.rateio) && r.dados.rateio.id === rid);
+/* quanto de cada dívida de dev já foi pago: o pagamento ligado a uma conta vai para ela;
+   o resto (e o que dev tem a receber) cobre as dívidas mais antigas primeiro. Só conta o confirmado. */
+function cobertura(D, dev, cred) {
+  const dividas = [], cob = new Map();
+  let livre = 0;
+  for (const d of D.desp.values()) {
+    if (d.apagada || !d.conta) continue;
+    const n = d.conta.pagou[dev] - d.conta.devido[dev];
+    if (n > 0) livre += n;
+    else if (n < 0) dividas.push({ id: d.id, falta: -n, data: d.conta.data || '', ts: d.ts, rid: d.conta.rateio && d.conta.rateio.id });
+  }
+  dividas.sort((x, y) => x.data.localeCompare(y.data) || x.ts - y.ts);
+  const usar = (x, v) => { const u = Math.min(v, x.falta); x.falta -= u; cob.set(x.id, (cob.get(x.id) || 0) + u); return u; };
+  for (const p of D.pag.values()) {
+    if (p.apagado || !p.conta) continue;
+    let v = p.conta.valor;
+    if (p.conta.de === cred && p.conta.para === dev) { livre -= v; continue; }
+    if (p.conta.de !== dev) continue;
+    const alvo = p.conta.rateio && dividas.find(x => x.rid === p.conta.rateio);
+    if (alvo) v -= usar(alvo, v);
+    livre += v;
+  }
+  for (const x of dividas) { if (livre <= 0) break; livre -= usar(x, livre); }
+  return cob;
+}
+/* estado de quem deve (dev) nesta conta, dentro de um par */
+function estadoNoPar(D, rid, dev, cred) {
+  const r = revRateio(D, rid);
+  if (!r) return { s: 'pend' };
+  const d = D.desp.get(r.item);
+  if (!d) return { s: r.st === 'recusado' ? 'rec' : 'apag' };
+  if (d.apagada) return { s: 'apag' };
+  if (!d.valido) return { s: 'pend' };
+  const parte = d.conta.devido[dev], g = cobertura(D, dev, cred).get(d.id) || 0, cf = d.revs[0].cf;
+  const e = { s: g >= parte ? 'pago' : 'conf' };
+  if (g && g < parte) e.g = g;
+  if (cf && cf.dados && cf.dados.ass && cf.dados.ass.rapida) e.r = 1;
+  return e;
+}
+/* o último estado publicado por autor neste par */
+function ultimoStatus(dd, rid, autor) {
+  let u = null;
+  for (const e of dd.eventos) if (e.tipo === 'rateio_st' && e.alvo === rid && e.autor === autor && eventoValido(e, Infinity) && (!u || e.ts >= u.ts)) u = e;
+  return u;
+}
+/* no celular de quem pagou: estado de todos, olhando cada par */
+function estadosComoPagador(rid) {
+  let l = null;
+  for (const dd of pares()) {
+    const D = derivar(dd), r = revRateio(D, rid);
+    if (!r || r.autor !== dd.config.eu) continue;
+    const info = r.dados.rateio;
+    if (!l) l = info.pessoas.map((_, i) => (i === 0 ? { s: 'p' } : { s: 'pend' }));
+    l[info.i] = estadoNoPar(D, rid, outroDe(dd), dd.config.eu);
+  }
+  return l;
+}
+function estadosRateio(D, d) {
+  const info = d.rateio;
+  if (d.revs[0].autor === EU()) return estadosComoPagador(info.id) || [];
+  const u = ultimoStatus(data, info.id, OUT());
+  const l = info.pessoas.map((_, i) => (u && u.dados.l[i]) || (i === 0 ? { s: 'p' } : { s: 'pend' }));
+  l[info.i] = estadoNoPar(D, info.id, EU(), OUT()); /* a sua linha sempre vem do que este celular sabe */
+  return l;
+}
+function blocoRateio(D, d) {
+  const info = d.rateio; if (!rateioOk(info)) return '';
+  const l = estadosRateio(D, d), pagador = d.revs[0].autor === EU(), minha = l[info.i] || {};
+  const linhas = info.pessoas.map((p, i) => {
+    const e = l[i] || { s: 'pend' }, ok = e.s === 'p' || e.s === 'pago';
+    const txt = (ST_RATEIO[e.s] || '') + (e.g ? ` · pagou ${R(e.g)} de ${R(p.v)}` : '') + (e.r ? ' ⚡' : '');
+    const voce = (pagador && i === 0) || (!pagador && i === info.i) ? ' (você)' : '';
+    return `<div class="rat ${ok ? 'ok' : 'falta'}"><span class="mid"><b>${esc(p.n + voce)}</b><small>${esc(txt)}</small></span><b>${R(i === 0 ? info.total : p.v)}</b></div>`;
+  }).join('');
+  const bt = pagador ? `<button class="btn cheio" data-a="qrRateio" data-id="${esc(info.id)}">📲 Mostrar QR para confirmar</button>`
+    : minha.s === 'conf' ? `<button class="btn cheio" data-a="pagarParte" data-id="${esc(d.id)}">💸 Paguei minha parte</button>` : '';
+  return `<h2 class="sec">Conta de ${R(info.total)} entre ${info.pessoas.filter(p => p.v > 0).length}</h2><div id="r-lista">${linhas}</div>${bt}`;
+}
+/* quem pagou publica o estado em cada par quando algo muda */
+function publicarRateios() {
+  const minhas = new Map();
+  for (const dd of pares()) {
+    const D = derivar(dd);
+    for (const r of D.rev.values()) {
+      if (r.tipo !== 'criar' || r.k !== 'd' || r.autor !== dd.config.eu || !rateioOk(r.dados.rateio)) continue;
+      const rid = r.dados.rateio.id;
+      if (!minhas.has(rid)) minhas.set(rid, []);
+      minhas.get(rid).push({ dd, D, info: r.dados.rateio });
+    }
+  }
+  let mudou = false;
+  for (const [rid, lista] of minhas) {
+    const l = lista[0].info.pessoas.map((_, i) => (i === 0 ? { s: 'p' } : { s: 'pend' }));
+    for (const x of lista) l[x.info.i] = estadoNoPar(x.D, rid, outroDe(x.dd), x.dd.config.eu);
+    for (const x of lista) {
+      const u = ultimoStatus(x.dd, rid, x.dd.config.eu);
+      if (u && canon(u.dados.l) === canon(l)) continue;
+      x.dd.eventos.push({ id: uid(), tipo: 'rateio_st', autor: x.dd.config.eu, ts: Date.now(), alvo: rid, dados: { l } });
+      store.save(x.dd); mudou = true;
+    }
+  }
+  return mudou;
+}
+function formRateio() {
+  sheetEstado = { rateio: true };
+  const ps = pares();
+  return `<h2>Conta com vários amigos</h2><div class="erro" id="erro" role="alert" hidden></div>
+  <p class="explica">Você pagou a conta inteira. Cada amigo marcado recebe a parte dele para confirmar.</p>
+  <label class="campo"><span>Descrição</span><input id="r-desc" maxlength="60"></label>
+  <label class="campo"><span>Valor total</span><span class="moeda"><b>R$</b><input id="r-valor" inputmode="decimal" placeholder="0,00"></span></label>
+  <div class="dupla">
+    <label class="campo"><span>Data</span><input id="r-data" type="date" value="${hoje()}"></label>
+    <label class="campo"><span>Categoria</span><select id="r-cat">${CATS.map(c => `<option value="${c.id}">${c.e} ${esc(c.r)}</option>`).join('')}</select></label>
+  </div>
+  <span class="rot">Dividir igualmente entre</span>
+  <label class="chk"><input type="checkbox" id="r-eu" checked> Você</label>
+  ${ps.map(dd => `<label class="chk"><input type="checkbox" id="r-${esc(idDe(dd))}"> ${esc(dd.config.nomes[outroDe(dd)])}</label>`).join('')}
+  <p class="dica" id="r-hint" aria-live="polite"></p>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarRateio">Salvar e mostrar QR</button></div>`;
+}
+function lerRateio() {
+  const desc = $('#r-desc').value.trim(), total = parseValor($('#r-valor').value), eu = !!$('#r-eu').checked;
+  const sel = pares().filter(dd => { const c = $('#r-' + idDe(dd)); return c && c.checked; });
+  if (!desc) return { erro: 'Dê uma descrição à conta.' };
+  if (!(total > 0)) return { erro: 'Informe um valor maior que zero.' };
+  if (!sel.length) return { erro: 'Marque pelo menos um amigo.' };
+  const n = sel.length + (eu ? 1 : 0), base = Math.floor(total / n), sobra = total - base * n;
+  const partes = Array.from({ length: n }, (_, i) => base + (i < sobra ? 1 : 0)); /* centavos que sobram vão para os primeiros */
+  const parteEu = eu ? partes.shift() : 0;
+  const pessoas = [{ n: nome(EU()), v: parteEu }, ...sel.map((dd, i) => ({ n: dd.config.nomes[outroDe(dd)], v: partes[i] }))];
+  return { desc, total, data: $('#r-data').value || hoje(), cat: $('#r-cat').value, sel, pessoas };
+}
+function atualizarRateio() {
+  const h = $('#r-hint'); if (!h) return;
+  const r = lerRateio();
+  h.textContent = r.erro ? '' : `Parte de cada um: ${r.pessoas.filter(p => p.v > 0).map(p => `${p.n} ${R(p.v)}`).join(' · ')}`;
+}
+async function salvarRateio() {
+  if (bioOcupado) return;
+  const r = lerRateio(); if (r.erro) return erroForm(r.erro);
+  const rid = uid(), ts = Date.now();
+  bioOcupado = true;
+  try { await assinar({ item: rid, id: rid, tipo: 'criar', autor: EU(), dados: { desc: r.desc, total: r.total } }, await garantirChave()); } /* a sua digital autoriza a conta inteira */
+  catch (er) { bioOcupado = false; return erroForm(msgBio(er)); }
+  bioOcupado = false;
+  let primeira = null;
+  r.sel.forEach((dd, k) => {
+    const eu = dd.config.eu, o = outroDe(dd), v = r.pessoas[k + 1].v;
+    const e = { id: uid(), tipo: 'despesa', autor: eu, ts, dados: { grupo: 'casal', desc: r.desc, valor: v, data: r.data, cat: r.cat, pagouModo: eu,
+      pagou: { [eu]: v, [o]: 0 }, tipo: 'exato', ent: { [eu]: 0, [o]: v }, devido: { [eu]: 0, [o]: v }, rec: null, nota: '', nf: null,
+      rateio: { id: rid, total: r.total, pessoas: r.pessoas, i: k + 1 } } };
+    dd.eventos.push(e); store.save(dd);
+    if (!primeira) primeira = { dd, id: e.id };
+  });
+  publicarRateios();
+  fecharSheet();
+  if (primeira.dd !== data) abrirPar(primeira.dd);
+  ui.tab = 'grupos'; ui.view = { t: 'despesa', id: primeira.id, grupo: 'casal' };
+  fim(); rolar(); sincronizarOutros();
+  qrRateio(rid);
+}
+/* QR na mesa: os amigos leem e confirmam; a lista atualiza sozinha */
+let syncRat = false;
+async function syncRateio(rid) {
+  if (syncRat) return; syncRat = true;
+  try {
+    for (const dd of pares()) {
+      if (!parAtivo(dd) || !revRateio(derivar(dd), rid) || (dd === data && sincronizando)) continue;
+      try { const r = await syncPar(dd); store.save(dd); if (r.novos) await verificarTudo(dd); } catch (e) {}
+    }
+    publicarRateios();
+  } finally { syncRat = false; }
+}
+function qrRateio(rid) {
+  let qr; try { qr = QR.svg(location.href.split('#')[0] + '#conta=' + rid); } catch (e) { return toast('Não foi possível gerar o QR.'); }
+  const lista = () => { const D = derivar(), d = [...D.desp.values()].find(x => x.rateio && x.rateio.id === rid); return d ? blocoRateio(D, d).replace(/<button[\s\S]*<\/button>$/, '') : ''; }; /* sem o botão do QR dentro do QR */
+  abrirSheet(`<h2>Confirmar na mesa</h2>
+    <p class="explica">Cada amigo abre o Equilibra, toca em 📷 e aponta para este código (ou usa a câmera do celular).</p>
+    <div class="qr">${qr}</div><div id="r-qr-lista">${lista()}</div>
+    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+  sheetEstado = { qrRateio: rid };
+  const iv = setInterval(async () => {
+    await syncRateio(rid);
+    const el = $('#r-qr-lista'); if (el && sheetEstado && sheetEstado.qrRateio === rid) el.innerHTML = lista();
+  }, 3000);
+  pararSheet = () => { clearInterval(iv); render(); };
+}
+/* quem leu o QR: acha a conta em algum dos seus pares e abre para confirmar */
+const lerConta = t => { const m = /#conta=([\w-]{4,60})$/.exec(String(t || '')); return m ? { conta: m[1] } : null; };
+function acharConta(rid) {
+  for (const dd of pares()) { const D = derivar(dd), r = revRateio(D, rid); if (r && D.desp.get(r.item)) return { dd, id: r.item }; }
+  return null;
+}
+async function abrirConta(rid) {
+  let a = acharConta(rid);
+  if (!a) { toast('Procurando a conta…'); await sincronizar(false); await sincronizarOutros(); a = acharConta(rid); }
+  if (!a) return toast('Esta conta não chegou aqui. Você já está conectado com quem pagou? Se não, peça primeiro o QR de amigo.');
+  if (a.dd !== data) abrirPar(a.dd);
+  ui.tab = 'grupos'; ui.view = { t: 'despesa', id: a.id, grupo: 'casal' };
+  render(); rolar();
+}
+
+/* ============================================================
+   CONFIRMAÇÃO RÁPIDA (sem digital, opcional em cada celular)
+   Uma chave guardada neste celular (não pode ser copiada para
+   fora) assina a confirmação. Quem recebe vê ⚡.
+   ============================================================ */
+const KEY_RAPIDA = 'equilibra:rapida';
+const rapidaAtiva = () => { try { return localStorage.getItem(KEY_RAPIDA) === '1'; } catch (e) { return false; } };
+function idb(modo, f) {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open('equilibra', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('chaves');
+    r.onerror = () => no(r.error);
+    r.onsuccess = () => { const q = f(r.result.transaction('chaves', modo).objectStore('chaves')); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); };
+  });
+}
+async function chaveRapida() {
+  let k = await idb('readonly', s => s.get('rapida'));
+  if (!k) {
+    const par = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
+    k = { cid: 'r' + novaChave(12), priv: par.privateKey, pub: b64u.enc(await crypto.subtle.exportKey('spki', par.publicKey)) };
+    await idb('readwrite', s => s.put(k, 'rapida'));
+  }
+  if (!data.eventos.some(e => e.tipo === 'chave' && e.autor === EU() && e.dados.cid === k.cid)) addEvento({ tipo: 'chave', dados: { cid: k.cid, pub: k.pub, rapida: true } });
+  return k;
+}
+async function assinarRapido(rev) {
+  const k = await chaveRapida();
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, k.priv, await desafio(rev));
+  return { cid: k.cid, sig: b64u.enc(sig), rapida: 1 };
+}
+async function verificarRapida(a, rev, pubB64) {
+  const key = await crypto.subtle.importKey('spki', b64u.dec(pubB64), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, b64u.dec(a.sig), await desafio(rev));
+}
+
+/* ============================================================
    SINCRONIZAÇÃO (mini servidor no Google Apps Script, v2)
    Cada celular tem uma chave própria, criada aqui e nunca
    digitada; o servidor descobre quem é pela chave e guarda um
@@ -2178,7 +2470,8 @@ async function sincronizar(interativo) {
     const t = msgErro(e); setSync('erro', t); if (interativo && t) toast(t);
   } finally {
     sincronizando = false;
-    if (novos) verificarTudo(dd);
+    if (novos) await verificarTudo(dd);
+    if (publicarRateios()) agendarSync();
     if (dd === data && (novos || ui.tab === 'conta' || ui.sync.estado !== 'ok')) renderSeguro();
   }
 }
@@ -2202,7 +2495,7 @@ async function sincronizarOutros() {
         if (novos) { mudou = true; verificarTudo(dd); }
       } catch (e) {}
     }
-  } finally { syncOutros = false; if (mudou) renderSeguro(); }
+  } finally { syncOutros = false; if (publicarRateios()) mudou = true; if (mudou) renderSeguro(); }
 }
 function falhou(e) { const t = msgErro(e); if (t) toast(t); }
 
@@ -2351,6 +2644,8 @@ function telaEntrada() {
   return `<main class="boas"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${corpo}</main>`;
 }
 function abrirConviteDaUrl() {
+  const conta = data && lerConta(location.hash);
+  if (conta) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} abrirConta(conta.conta); return; }
   if (!/^#entrar=/.test(location.hash)) return;
   const c = lerConvite(location.hash);
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} /* tira o convite da barra de endereço */
@@ -2359,8 +2654,10 @@ function abrirConviteDaUrl() {
 
 /* --- ler o QR com a câmera, dentro do app --- */
 async function escanear() {
-  const c = await lerQRCamera({ titulo: 'Escanear QR', dica: 'Aponte para o QR que aparece no celular da outra pessoa.', aceitar: lerConvite });
-  if (c) { if (!$('#sheet').hidden) fecharSheet(); entrarComConvite(c); }
+  const c = await lerQRCamera({ titulo: 'Escanear QR', dica: 'Aponte para o QR que aparece no celular da outra pessoa.', aceitar: t => lerConvite(t) || (data && lerConta(t)) });
+  if (!c) return;
+  if (!$('#sheet').hidden) fecharSheet();
+  if (c.conta) abrirConta(c.conta); else entrarComConvite(c);
 }
 function desconectar() {
   confirmar('Desconectar este celular? Os dados continuam aqui, mas param de sincronizar. Para voltar, a outra pessoa precisa mostrar um QR novo.', 'Desconectar', () => {
