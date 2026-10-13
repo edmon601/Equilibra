@@ -2376,9 +2376,15 @@ async function pedirBuzao() {
   if (!base) throw new Error('ative a sincronização primeiro');
   const j = await chamar(base.sync, { acao: 'pushConfig' });
   if (!j.config || !j.config.app || !j.config.vapidKey) throw new Error('o servidor ainda não tem as notificações configuradas');
+  /* copiar e colar às vezes traz espaços invisíveis, que o Firebase não aceita nos cabeçalhos */
+  const limpo = v => String(v == null ? '' : v).replace(/[^\x21-\x7E]/g, '');
+  const cfg = {}; for (const k in j.config.app) cfg[k] = limpo(j.config.app[k]);
+  const vapid = limpo(j.config.vapidKey);
+  if (!/^AIza[\w-]{35}$/.test(cfg.apiKey || '')) throw new Error('a apiKey em FCM_WEB (Propriedades do script) está errada');
+  if (!/^[\w-]{80,100}$/.test(vapid)) throw new Error('a vapidKey em FCM_WEB (Propriedades do script) está errada');
   if (!window.firebase) { await carregarScript(FB_SDK + 'firebase-app-compat.js'); await carregarScript(FB_SDK + 'firebase-messaging-compat.js'); }
-  const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(j.config.app);
-  return firebase.messaging(app).getToken({ vapidKey: j.config.vapidKey, serviceWorkerRegistration: await navigator.serviceWorker.ready });
+  const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
+  return firebase.messaging(app).getToken({ vapidKey: vapid, serviceWorkerRegistration: await navigator.serviceWorker.ready });
 }
 async function ligarPush(on) {
   if (bioOcupado) return;
