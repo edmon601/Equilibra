@@ -1034,11 +1034,9 @@ function topo(titulo, op = {}) {
   return `<header class="topo">${op.voltar ? '<button class="ic" data-a="voltar" aria-label="Voltar">‹</button>' : ''}<h1>${esc(titulo)}</h1>${op.acao ? `<button class="ic" data-a="${op.acao}" aria-label="${esc(op.rotulo || 'Mais opções')}">⋯</button>` : ''}</header>`;
 }
 function topoMarca() {
-  const pend = ui.sync.estado === 'pendente' || ui.sync.estado === 'erro';
-  const sy = data && data.sync && data.sync.url ? `<button class="ic ${pend ? 'pend' : ''}" data-a="sync" aria-label="Sincronizar">⟳</button>` : '';
   const com = data ? `<button class="com-amigo" data-a="tab" data-t="amigos" aria-label="Trocar de amigo">${avatar(nome(OUT()), fotoDe(data, OUT()), 'mini')}<span>${esc(nome(OUT()))}</span> ▾</button>` : '';
   const cam = data ? '<button class="ic" data-a="escanear" aria-label="Ler QR">📷</button>' : '';
-  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${cam}${sy}</header>`;
+  return `<header class="topo marca"><span class="logo">${LOGO}</span><h1>Equilibra</h1>${com}${cam}</header>`;
 }
 
 function telaBoas() {
@@ -1126,7 +1124,7 @@ async function criarAmigo() {
     try {
       bioOcupado = true; toast('Criando…');
       const j = await chamar(base.sync, { acao: 'novoEspaco', t2: token, autor: 'a' });
-      dd.sync = { url: base.sync.url, token, espaco: j.espaco, ultima: 0, enviado: '', recuperado: true };
+      dd.sync = { url: base.sync.url, token, espaco: j.espaco, ultima: 0, recuperado: true };
     } catch (e) { return erroForm(msgErro(e)); } finally { bioOcupado = false; }
   }
   store.save(dd); registrarPar(dd); abrirPar(dd); fecharSheet(); fim();
@@ -1430,6 +1428,7 @@ function telaConta() {
   <div class="bloco">${blocoPerfil()}${varios ? `<p class="caixa" style="margin:12px 0 0">Sincronização, nomes e tipos abaixo valem para <b>${esc(nome(OUT()))}</b>. Para outro amigo, abra-o em Amigos.</p>` : ''}
     ${blocoSync()}
     ${blocoDigital()}
+    ${blocoNotif()}
     <h2>Nomes</h2>
     <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
     <label class="campo"><span>Nome da outra pessoa</span><input id="c-b" value="${esc(nome(OUT()))}" maxlength="24"></label>
@@ -1829,6 +1828,8 @@ const AC = {
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   formRateio() { abrirSheet(formRateio()); },
+  ligarPush() { ligarPush(true); },
+  desligarPush() { ligarPush(false); },
   salvarRateio() { salvarRateio(); },
   qrRateio(d) { qrRateio(d.id); },
   pagarParte(d) {
@@ -2303,7 +2304,7 @@ function qrRateio(rid) {
   const iv = setInterval(async () => {
     await syncRateio(rid);
     const el = $('#r-qr-lista'); if (el && sheetEstado && sheetEstado.qrRateio === rid) el.innerHTML = lista();
-  }, 3000);
+  }, 2000);
   pararSheet = () => { clearInterval(iv); render(); };
 }
 /* quem leu o QR: acha a conta em algum dos seus pares e abre para confirmar */
@@ -2357,6 +2358,65 @@ async function verificarRapida(a, rev, pubB64) {
 }
 
 /* ============================================================
+   NOTIFICAÇÕES (Web Push pelo Firebase Cloud Messaging, grátis)
+   Este celular pede ao Firebase um "buzão" (token) e o manda ao
+   servidor junto com a sincronização de cada amigo. Quando o outro
+   registra algo, o servidor avisa esse buzão, mesmo com o app fechado.
+   ============================================================ */
+const KEY_PUSH = 'equilibra:push', FB_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
+/* null = nunca ativou; '' = desativado; texto = buzão deste celular */
+const pushToken = () => { try { return localStorage.getItem(KEY_PUSH); } catch (e) { return null; } };
+const suportePush = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const pushLigado = () => suportePush() && !!pushToken() && Notification.permission === 'granted';
+function carregarScript(src) {
+  return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('sem internet')); document.head.appendChild(s); });
+}
+async function pedirBuzao() {
+  const base = pares().find(parAtivo);
+  if (!base) throw new Error('ative a sincronização primeiro');
+  const j = await chamar(base.sync, { acao: 'pushConfig' });
+  if (!j.config || !j.config.app || !j.config.vapidKey) throw new Error('o servidor ainda não tem as notificações configuradas');
+  if (!window.firebase) { await carregarScript(FB_SDK + 'firebase-app-compat.js'); await carregarScript(FB_SDK + 'firebase-messaging-compat.js'); }
+  const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(j.config.app);
+  return firebase.messaging(app).getToken({ vapidKey: j.config.vapidKey, serviceWorkerRegistration: await navigator.serviceWorker.ready });
+}
+async function ligarPush(on) {
+  if (bioOcupado) return;
+  bioOcupado = true;
+  try {
+    if (on) {
+      if (await Notification.requestPermission() !== 'granted') toast('As notificações estão bloqueadas. Libere em Chrome › Configurações do site › Notificações.');
+      else {
+        const t = await pedirBuzao(); if (!t) throw new Error('o Firebase não entregou o buzão');
+        localStorage.setItem(KEY_PUSH, t); localStorage.setItem(KEY_PUSH + ':dia', hoje());
+        toast('Notificações ativadas neste celular.');
+      }
+    } else { localStorage.setItem(KEY_PUSH, ''); toast('Notificações desativadas neste celular.'); }
+  } catch (e) { toast('Não foi possível ativar as notificações: ' + ((e && e.message) || e)); }
+  bioOcupado = false;
+  fim(); sincronizarOutros();
+}
+/* uma vez por dia confere se o buzão mudou (o Firebase pode trocá-lo) ou se a permissão foi tirada */
+async function renovarPush() {
+  try {
+    if (!pushToken() || !suportePush()) return;
+    if (Notification.permission !== 'granted') { localStorage.setItem(KEY_PUSH, ''); return agendarSync(); }
+    if (localStorage.getItem(KEY_PUSH + ':dia') === hoje()) return;
+    const t = await pedirBuzao();
+    localStorage.setItem(KEY_PUSH + ':dia', hoje());
+    if (t && t !== pushToken()) { localStorage.setItem(KEY_PUSH, t); agendarSync(); sincronizarOutros(); }
+  } catch (e) {}
+}
+function blocoNotif() {
+  if (!suportePush()) return '<h2>🔔 Notificações</h2><p class="explica">Este navegador não recebe notificações. No Android, use o Chrome; no iPhone, instale o app na tela de início.</p>';
+  const on = pushLigado(), bloq = Notification.permission === 'denied';
+  return `<h2>🔔 Notificações</h2>
+    <p class="explica">Avisa neste celular quando um amigo registra, confirma ou comenta algo, mesmo com o app fechado.</p>
+    <p class="estado ${on ? 'ok' : 'falta'}">${on ? 'Ativadas neste celular' : bloq ? 'Bloqueadas no Chrome' : 'Desativadas'}</p>
+    <button class="${on ? 'btn-txt' : 'btn-sec'}" ${on ? 'style="color:var(--suave)"' : ''} data-a="${on ? 'desligarPush' : 'ligarPush'}">${on ? 'Desativar notificações' : 'Ativar notificações'}</button>`;
+}
+
+/* ============================================================
    SINCRONIZAÇÃO (mini servidor no Google Apps Script, v2)
    Cada celular tem uma chave própria, criada aqui e nunca
    digitada; o servidor descobre quem é pela chave e guarda um
@@ -2369,7 +2429,7 @@ let sincronizando = false, syncT = null, bioOcupado = false, entradaId = 0;
 
 /* conexões antigas (com chave secreta digitada) precisam ser ativadas de novo; o endereço é aproveitado */
 function migrarSync(dd) {
-  if (dd && dd.sync && !dd.sync.token) { dd.sync = { url: dd.sync.url || '', token: '', espaco: '', ultima: 0, enviado: '' }; store.save(dd); }
+  if (dd && dd.sync && !dd.sync.token) { dd.sync = { url: dd.sync.url || '', token: '', espaco: '', ultima: 0 }; store.save(dd); }
   return dd;
 }
 migrarSync(data);
@@ -2380,17 +2440,21 @@ const URL_SCRIPT = /^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\
 const outroDe = dd => (dd.config.eu === 'a' ? 'b' : 'a');
 
 function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h) + ':' + s.length; }
-function montarMeu(dd) {
-  const eu = dd.config.eu;
+/* o que este celular ainda precisa mandar: os registros dele depois do último que o servidor
+   confirmou (ultimoId) e a config (nome/foto) só se mudou desde o último envio confirmado */
+function pacoteMeu(dd) {
+  const s = dd.sync, eu = dd.config.eu, meus = dd.eventos.filter(e => e.autor === eu);
+  const i = s.ultimoId ? meus.findIndex(e => e.id === s.ultimoId) : -1; /* não achou: manda tudo (o servidor ignora repetidos) */
   const config = { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0, foto: fotoDe(dd, eu), fotoTs: (dd.config.fotosTs || {})[eu] || 0 };
-  const base = { v: 2, espaco: dd.sync.espaco, autor: eu, config, eventos: dd.eventos.filter(e => e.autor === eu) };
-  return { hash: hash(JSON.stringify(base)), obj: { ...base, atualizado: Date.now() } };
+  const ch = hash(JSON.stringify(config));
+  return { novos: meus.slice(i + 1), config: ch !== s.cfgEnviado ? config : undefined, ch };
 }
-/* junta eventos vindos do servidor; só aceita os do autor esperado (ou de qualquer um, se autor = null) */
+/* junta eventos vindos do servidor; só aceita os do autor esperado (ou de qualquer um, se autor = null).
+   Data no futuro também é guardada: só passa a valer quando a data chegar (o servidor não manda de novo). */
 function mesclar(dd, arq, autor) {
   let n = 0; const ids = new Set(dd.eventos.map(e => e.id));
   for (const e of (arq.eventos || [])) {
-    if (eventoValido(e) && (autor === null || e.autor === autor) && !ids.has(e.id)) { dd.eventos.push(e); ids.add(e.id); n++; }
+    if (eventoValido(e, Infinity) && (autor === null || e.autor === autor) && !ids.has(e.id)) { dd.eventos.push(e); ids.add(e.id); n++; }
   }
   return n;
 }
@@ -2407,17 +2471,32 @@ function aplicarFoto(dd, c, p) {
   dd.config.fotosTs = { ...(dd.config.fotosTs || {}), [p]: c.fotoTs };
   return true;
 }
-function mesclarDoOutro(dd, arq) { const n = mesclar(dd, arq, outroDe(dd)); aplicarNomes(dd, arq.config); aplicarFoto(dd, arq.config, outroDe(dd)); return n; }
+/* o que veio do outro: só os registros a partir de "desde" e a config só quando mudou */
+function mesclarDoOutro(dd, o) {
+  const n = mesclar(dd, o, outroDe(dd));
+  if (o.config) { aplicarNomes(dd, o.config); aplicarFoto(dd, o.config, outroDe(dd)); dd.sync.cfgOutro = o.configTs || 0; }
+  if (Number.isInteger(o.total)) dd.sync.desde = o.total;
+  return n;
+}
 /* sincroniza um amigo (par) com o servidor dele; não mexe na tela nem salva */
 async function syncPar(dd) {
-  const s = dd.sync, m = montarMeu(dd), enviar = m.hash !== s.enviado;
-  /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
-  const j = await chamar(s, { acao: 'sync', meu: enviar ? m.obj : undefined, recuperar: s.recuperado ? undefined : true });
+  const s = dd.sync, p = pacoteMeu(dd), eu = dd.config.eu;
+  const corpo = { acao: 'sync', desde: s.desde || 0, cfg: s.cfgOutro || 0 };
+  if (p.novos.length) corpo.novos = p.novos;
+  if (p.config) corpo.config = p.config;
+  const tok = pushToken();
+  if (tok !== null && s.pushEnviado !== tok) corpo.push = tok; /* buzão novo, ou '' para desligar */
+  if (!s.recuperado) corpo.recuperar = true; /* na primeira vez depois de conectar, recupera do servidor os próprios registros */
+  const j = await chamar(s, corpo);
   const fotosAntes = JSON.stringify(dd.config.fotos || {});
-  if (j.meu) { mesclar(dd, j.meu, dd.config.eu); aplicarNomes(dd, j.meu.config); aplicarFoto(dd, j.meu.config, dd.config.eu); }
+  if (j.meu) { mesclar(dd, j.meu, eu); aplicarNomes(dd, j.meu.config); aplicarFoto(dd, j.meu.config, eu); }
   s.recuperado = true; if (j.espaco) s.espaco = j.espaco;
+  /* avança o "entregue ✔" só pelos registros que o servidor confirmou, na ordem */
+  const ok = new Set(j.recebidos || []);
+  for (const e of p.novos) { if (!ok.has(e.id)) break; s.ultimoId = e.id; }
+  if (p.config) s.cfgEnviado = p.ch;
+  if (corpo.push !== undefined) s.pushEnviado = corpo.push;
   const novos = j.outro ? mesclarDoOutro(dd, j.outro) : 0;
-  if (enviar) s.enviado = m.hash;
   s.ultima = Date.now();
   return { j, novos, fotoNova: fotosAntes !== JSON.stringify(dd.config.fotos || {}) };
 }
@@ -2447,17 +2526,25 @@ function msgErro(e) {
   if (semRede(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
   return m;
 }
+/* ritmo da sincronização do amigo aberto: 3 s por 2 minutos depois de qualquer movimento
+   (algo seu, algo que chegou do outro, voltar para a app); 15 s quando nada acontece */
+let ativoAte = 0, ultimaSync = 0;
+const mexeu = () => { ativoAte = Date.now() + 120000; };
+const ritmo = () => (Date.now() < ativoAte ? 3000 : 15000);
 function agendarSync() {
+  mexeu();
   if (!syncAtiva()) return;
   clearTimeout(syncT); syncT = setTimeout(() => sincronizar(false), 500);
 }
 async function sincronizar(interativo) {
   if (!syncAtiva() || sincronizando) return;
+  ultimaSync = Date.now();
   const dd = data; /* se a pessoa trocar de amigo no meio, os dados continuam indo para o par certo */
   sincronizando = true; setSync('sinc', 'sincronizando…');
   let novos = 0;
   try {
     const r = await syncPar(dd); novos = r.novos;
+    if (novos) mexeu();
     if (r.fotoNova && dd === data) setTimeout(renderSeguro, 0);
     store.save(dd);
     if (dd !== data) return;
@@ -2518,7 +2605,7 @@ async function executarAtivacao(url) {
   } catch (e) { return falhou(e); }
   data.eventos.forEach(e => { if (e.autor !== EU()) e.autor = EU(); });
   data.v = 2;
-  data.sync = { url, token, espaco: j.espaco, ultima: 0, enviado: '', recuperado: true };
+  data.sync = { url, token, espaco: j.espaco, ultima: 0, recuperado: true };
   store.save(data);
   await sincronizar(true);
   render();
@@ -2545,7 +2632,7 @@ async function convidar() {
     const resta = Math.max(0, ate - Date.now()), el = $('#qr-tempo');
     if (el) el.textContent = resta ? `Vale por ${Math.floor(resta / 60000)}:${String(Math.floor(resta / 1000) % 60).padStart(2, '0')}` : 'Este QR expirou. Feche e gere outro.';
     if (!resta) { clearInterval(iv); const q = $('#sheetBody .qr'); if (q) q.style.opacity = '.12'; return; }
-    if (++tique % 3 === 0) sincronizar(false); /* procura o pedido de quem leu o QR */
+    if (++tique % 2 === 0) sincronizar(false); /* procura o pedido de quem leu o QR */
   }, 1000);
   pararSheet = () => clearInterval(iv);
 }
@@ -2594,7 +2681,7 @@ function lerConvite(txt) {
 async function entrarComConvite(c) {
   /* se este aparelho já tem dados, quem leu o QR vira um amigo novo (não apaga nada) */
   const meu = ++entradaId;
-  const eu = c.a === 'a' ? 'b' : 'a', s = { url: c.url, token: novaChave(), espaco: '', ultima: 0, enviado: '' };
+  const eu = c.a === 'a' ? 'b' : 'a', s = { url: c.url, token: novaChave(), espaco: '', ultima: 0 };
   ui.entrada = { msg: 'Conectando…' }; render();
   try { await chamar(s, { acao: 'entrar', p: c.p }); }
   catch (e) { if (meu === entradaId) { ui.entrada = { erro: msgErro(e) }; render(); } return; }
@@ -2609,11 +2696,11 @@ async function entrarComConvite(c) {
     } catch (e) {
       if (meu !== entradaId) return;
       const m = String((e && e.message) || e);
-      if ((m === 'aguardando' || semRede(m)) && Date.now() < ate) { setTimeout(tentar, 3000); return; }
+      if ((m === 'aguardando' || semRede(m)) && Date.now() < ate) { setTimeout(tentar, 2000); return; }
       ui.entrada = { erro: m === 'chave' || m === 'aguardando' ? 'O pedido foi recusado ou o QR expirou. Peça um QR novo.' : msgErro(e) }; render();
     }
   };
-  setTimeout(tentar, 3000);
+  setTimeout(tentar, 2000);
 }
 function concluirEntrada(j, s, eu, quemConvidou) {
   const o = j.outro, c = (o && o.config) || {};
@@ -2661,7 +2748,7 @@ async function escanear() {
 }
 function desconectar() {
   confirmar('Desconectar este celular? Os dados continuam aqui, mas param de sincronizar. Para voltar, a outra pessoa precisa mostrar um QR novo.', 'Desconectar', () => {
-    data.sync = { url: data.sync.url, token: '', espaco: '', ultima: 0, enviado: '' };
+    data.sync = { url: data.sync.url, token: '', espaco: '', ultima: 0 };
     store.save(data); setSync('', ''); ui.pedido = null; render();
   });
 }
@@ -2726,12 +2813,16 @@ abrirConviteDaUrl(); /* aberto pelo QR lido com a câmera do celular */
 
 window.addEventListener('hashchange', abrirConviteDaUrl);
 window.addEventListener('online', () => { if (data) agendarSync(); });
-setInterval(() => { if (!document.hidden && syncAtiva() && !sincronizando) sincronizar(false); }, 10000);
-setInterval(() => { if (!document.hidden && amigos.ids.length > 1) sincronizarOutros(); }, 30000);
+setInterval(() => { if (!document.hidden && syncAtiva() && !sincronizando && Date.now() - ultimaSync >= ritmo()) sincronizar(false); }, 1000);
+setInterval(() => { if (!document.hidden && amigos.ids.length > 1) sincronizarOutros(); }, 20000);
 if (data && amigos.ids.length > 1) setTimeout(sincronizarOutros, 2000);
 if (data) verificarTudo();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.equilibra === 'push') { mexeu(); if (data) sincronizar(false); sincronizarOutros(); } });
+  setTimeout(renovarPush, 5000);
+}
 })();
 </script>
 </body>

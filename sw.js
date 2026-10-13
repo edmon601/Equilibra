@@ -1,6 +1,6 @@
 /* Equilibra - service worker
    Busca sempre a versão mais nova quando há internet e usa a cópia guardada quando não há. */
-const VERSAO = 'equilibra-v14';
+const VERSAO = 'equilibra-v17';
 const ARQUIVOS = ['./equilibra.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -28,4 +28,29 @@ self.addEventListener('fetch', e => {
       })
       .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('./equilibra.html')))
   );
+});
+
+/* notificação que chegou pelo Firebase: com o app aberto na tela, só pede para sincronizar;
+   fechado ou em segundo plano, mostra o aviso */
+self.addEventListener('push', e => {
+  let p = {}; try { p = e.data ? e.data.json() : {}; } catch (er) {}
+  const d = p.data || p, n = p.notification || {};
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
+    const aberto = ws.find(w => w.visibilityState === 'visible');
+    ws.forEach(w => w.postMessage({ equilibra: 'push' }));
+    if (aberto) return;
+    return self.registration.showNotification(String(d.titulo || n.title || 'Equilibra').slice(0, 60), {
+      body: String(d.corpo || n.body || 'Novidades no Equilibra').slice(0, 200), icon: './icon-192.png', badge: './icon-192.png',
+      tag: String(d.tag || 'equilibra'), renotify: true
+    });
+  }));
+});
+
+/* tocar na notificação abre o app (ou traz para a frente se já estiver aberto) */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
+    const w = ws.find(x => x.url.includes('equilibra'));
+    return w ? w.focus() : self.clients.openWindow('./equilibra.html');
+  }));
 });
