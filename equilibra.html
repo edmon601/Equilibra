@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e8a7b">
 <meta name="color-scheme" content="light dark">
-<script>try { const t = localStorage.getItem('equilibra:tema'); if (t === 'claro' || t === 'escuro') document.documentElement.dataset.tema = t; } catch (e) {}</script>
+<script>let t0 = 'claro'; try { if (localStorage.getItem('equilibra:tema') === 'escuro') t0 = 'escuro'; } catch (e) {} document.documentElement.dataset.tema = t0;</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.json">
@@ -308,7 +308,12 @@ function lerAmigos() {
 function salvarAmigos() { mem[KEY_AMIGOS] = amigos; try { localStorage.setItem(KEY_AMIGOS, JSON.stringify(amigos)); } catch (e) {} }
 let amigos = lerAmigos();
 const idDe = dd => (dd && dd.parId) || PRINCIPAL;
-function carregarPar(id) { const d = store.load(id); if (d && id && id !== PRINCIPAL) d.parId = id; return migrarSync(d); }
+function carregarPar(id) {
+  const d = store.load(id); if (d && id && id !== PRINCIPAL) d.parId = id;
+  /* descarta lixo guardado por versões antigas; data no futuro fica (pode ser só o relógio adiantado) */
+  if (d && Array.isArray(d.eventos)) d.eventos = d.eventos.filter(e => eventoValido(e, Infinity));
+  return migrarSync(d);
+}
 function registrarPar(dd) { const id = idDe(dd); if (!amigos.ids.includes(id)) amigos.ids.push(id); salvarAmigos(); }
 /* passa a mostrar outro amigo: salva o atual e zera o que está aberto na tela */
 function abrirPar(dd) {
@@ -455,10 +460,48 @@ function addEvento(e) {
   data.eventos.push(e);
   store.save(data);
 }
+/* confere a forma de um evento (vindo de outro celular, do servidor ou de backup) antes de usar;
+   um evento estranho é ignorado em vez de travar a app. Tipos desconhecidos passam (versões futuras). */
+function eventoValido(e, agora = Date.now()) {
+  const obj = x => !!x && typeof x === 'object' && !Array.isArray(x);
+  const txt = (x, n) => typeof x === 'string' && x.length <= n;
+  const opt = (x, f) => x === undefined || x === null || f(x);
+  const cent = x => Number.isSafeInteger(x) && x >= 0 && x <= 1e11;
+  const par = x => obj(x) && cent(x.a) && cent(x.b);
+  const pessoa = x => x === 'a' || x === 'b';
+  const dia = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  if (!obj(e) || !txt(e.id, 120) || !/^[\w@.:-]+$/.test(e.id) || !txt(e.tipo, 30) || !pessoa(e.autor)) return false;
+  if (!Number.isFinite(e.ts) || e.ts < 0 || e.ts > agora + 2 * 864e5) return false; /* data no futuro ficaria sempre por último */
+  if (!opt(e.alvo, x => txt(x, 120)) || !opt(e.dados, obj)) return false;
+  if (!opt(e.assin, a => obj(a) && ['cid', 'ad', 'cd', 'sig'].every(k => txt(a[k], 4000)))) return false;
+  let tam = 0; try { tam = JSON.stringify(e).length; } catch (er) { return false; }
+  if (tam > 20000) return false;
+  const d = e.dados || {}, alvo = typeof e.alvo === 'string';
+  switch (e.tipo) {
+    case 'grupo': case 'tgrupo': return txt(d.nome, 60) && txt(d.icone, 40);
+    case 'grupo_edit': return alvo && opt(d.nome, x => txt(x, 60)) && opt(d.icone, x => txt(x, 40));
+    case 'grupo_del': case 'tgrupo_del': case 'despesa_del': case 'pagamento_del': return alvo;
+    case 'despesa': case 'despesa_edit': {
+      const novo = e.tipo === 'despesa';
+      if (!novo && !alvo) return false;
+      if (novo && !(cent(d.valor) && d.valor > 0 && par(d.pagou) && par(d.devido) && txt(d.desc, 300))) return false;
+      return opt(d.valor, x => cent(x) && x > 0) && opt(d.pagou, par) && opt(d.devido, par) && opt(d.desc, x => txt(x, 300)) &&
+        opt(d.data, dia) && opt(d.nota, x => txt(x, 2000)) && opt(d.grupo, x => txt(x, 120)) && opt(d.cat, x => txt(x, 60)) &&
+        opt(d.pagouModo, x => txt(x, 10)) && opt(d.tipo, x => txt(x, 10)) && opt(d.ent, obj) && opt(d.nf, obj) &&
+        opt(d.rec, x => x === 'mensal' || x === 'semanal') && opt(d.origem, x => txt(x, 120));
+    }
+    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120));
+    case 'confirma': return txt(d.rev, 120) && obj(d.ass);
+    case 'recusa': return txt(d.rev, 120);
+    case 'comentario': return alvo && txt(d.texto, 2000);
+    case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000);
+  }
+  return true;
+}
 /* conta qualquer despesa ou pagamento não apagado, confirmado ou não */
 const grupoTemConteudo = (desp, pag, gid) => [...desp.values(), ...pag.values()].some(x => !x.apagada && !x.apagado && (x.grupo === gid || (x.proj && x.proj.grupo === gid)));
 function derivar(dd = data) {
-  const evs = [...dd.eventos].sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
+  const evs = dd.eventos.filter(e => eventoValido(e)).sort((x, y) => x.ts - y.ts || String(x.id).localeCompare(String(y.id)));
   const grupos = new Map([['casal', { id: 'casal', nome: 'Nós dois', icone: '🤝', padrao: true, ts: 0 }]]);
   const desp = new Map(), pag = new Map(), coms = [], tipos = new Map();
   const itens = new Map(), rev = new Map(), confs = new Map(), recs = new Map(), gdels = new Map(), verif = dd.verif || {};
@@ -466,10 +509,10 @@ function derivar(dd = data) {
   const juntar = (m, k, e) => { if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
   for (const e of evs) {
     switch (e.tipo) {
-      case 'grupo': grupos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
-      case 'grupo_edit': if (grupos.has(e.alvo)) Object.assign(grupos.get(e.alvo), e.dados); break;
+      case 'grupo': if (!grupos.has(e.id)) grupos.set(e.id, { id: e.id, nome: e.dados.nome, icone: e.dados.icone, ts: e.ts, autor: e.autor }); break;
+      case 'grupo_edit': { const g = grupos.get(e.alvo); if (g) { if (e.dados.nome) g.nome = e.dados.nome; if (e.dados.icone) g.icone = e.dados.icone; } break; }
       case 'grupo_del': { const g = grupos.get(e.alvo); if (g && !g.padrao) juntar(gdels, e.alvo, nova(e, 'excluir', e.alvo, 'g')); break; }
-      case 'tgrupo': tipos.set(e.id, { id: e.id, ...e.dados, ts: e.ts, autor: e.autor }); break;
+      case 'tgrupo': tipos.set(e.id, { id: e.id, nome: e.dados.nome, icone: e.dados.icone, ts: e.ts, autor: e.autor }); break;
       case 'tgrupo_del': if (tipos.has(e.alvo)) tipos.get(e.alvo).apagado = true; break;
       case 'despesa': itens.set(e.id, { k: 'd', id: e.id, revs: [nova(e, 'criar', e.id, 'd')] }); break;
       case 'despesa_edit': { const it = itens.get(e.alvo); if (it && it.k === 'd') it.revs.push(nova(e, 'editar', e.alvo, 'd')); break; }
@@ -1301,18 +1344,16 @@ function blocoTipos() {
     <button class="btn-sec" data-a="novoTipo" style="margin-top:10px">Criar novo tipo</button>`;
 }
 /* aparência: preferência só deste aparelho */
-function lerTema() { try { const t = localStorage.getItem('equilibra:tema'); return t === 'claro' || t === 'escuro' ? t : 'auto'; } catch (e) { return 'auto'; } }
+function lerTema() { try { return localStorage.getItem('equilibra:tema') === 'escuro' ? 'escuro' : 'claro'; } catch (e) { return 'claro'; } }
 function aplicarTema(t) {
-  try { if (t === 'auto') localStorage.removeItem('equilibra:tema'); else localStorage.setItem('equilibra:tema', t); } catch (e) {}
-  const r = document.documentElement;
-  if (t === 'auto') delete r.dataset.tema; else r.dataset.tema = t;
-  const escuro = t === 'escuro' || (t === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', escuro ? '#0b5f55' : '#0e8a7b');
+  t = t === 'escuro' ? 'escuro' : 'claro';
+  try { localStorage.setItem('equilibra:tema', t); } catch (e) {}
+  document.documentElement.dataset.tema = t;
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'escuro' ? '#0b5f55' : '#0e8a7b');
 }
 function blocoTema() {
   const t = lerTema(), op = (v, r) => `<button data-a="tema" data-v="${v}" class="${t === v ? 'on' : ''}" aria-pressed="${t === v}">${r}</button>`;
-  return `<h2>Aparência</h2><div class="faixa" style="padding:0 0 6px">${op('auto', '📱 Automático')}${op('claro', '☀️ Claro')}${op('escuro', '🌙 Escuro')}</div>
-    <p class="explica">Automático segue o modo claro ou escuro do celular.</p>`;
+  return `<h2>Aparência</h2><div class="faixa" style="padding:0 0 6px">${op('claro', '☀️ Claro')}${op('escuro', '🌙 Escuro')}</div>`;
 }
 /* perfil: a sua foto vale para todos os amigos e aparece no celular deles */
 const CAMERA = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M8.5 5.5 10 3.8h4l1.5 1.7H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12.6" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
@@ -1663,7 +1704,7 @@ async function importarArquivo(file) {
     const j = JSON.parse(await file.text());
     if (!j || !Array.isArray(j.eventos)) throw new Error('formato');
     const ids = new Set(data.eventos.map(e => e.id)); let n = 0;
-    for (const e of j.eventos) if (e && e.id && e.tipo && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
+    for (const e of j.eventos) if (eventoValido(e) && !ids.has(e.id)) { data.eventos.push(e); ids.add(e.id); n++; }
     store.save(data); toast(n ? `${n} registros novos importados.` : 'Nada novo para importar.'); fim();
   } catch (err) { toast('Arquivo inválido. Use um backup do Equilibra.'); }
 }
@@ -2057,12 +2098,12 @@ function montarMeu(dd) {
 function mesclar(dd, arq, autor) {
   let n = 0; const ids = new Set(dd.eventos.map(e => e.id));
   for (const e of (arq.eventos || [])) {
-    if (e && e.id && e.tipo && (autor === null || e.autor === autor) && !ids.has(e.id)) { dd.eventos.push(e); ids.add(e.id); n++; }
+    if (eventoValido(e) && (autor === null || e.autor === autor) && !ids.has(e.id)) { dd.eventos.push(e); ids.add(e.id); n++; }
   }
   return n;
 }
 function aplicarNomes(dd, c) {
-  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && (c.ts || 0) > (dd.config.nomesTs || 0)) {
+  if (c && c.nomes && typeof c.nomes.a === 'string' && typeof c.nomes.b === 'string' && c.nomes.a.length <= 40 && c.nomes.b.length <= 40 && Number.isFinite(c.ts) && c.ts > (dd.config.nomesTs || 0)) {
     dd.config.nomes = { a: c.nomes.a, b: c.nomes.b }; dd.config.nomesTs = c.ts;
   }
 }
@@ -2381,7 +2422,6 @@ function render() {
 }
 
 aplicarTema(lerTema());
-if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema(lerTema())); } catch (e) {} }
 if (data) gerarRecorrentes();
 render();
 if (data && data.sync) sincronizar(false);
