@@ -2419,7 +2419,8 @@ function blocoNotif() {
   return `<h2>🔔 Notificações</h2>
     <p class="explica">Avisa neste celular quando um amigo registra, confirma ou comenta algo, mesmo com o app fechado.</p>
     <p class="estado ${on ? 'ok' : 'falta'}">${on ? 'Ativadas neste celular' : bloq ? 'Bloqueadas no Chrome' : 'Desativadas'}</p>
-    <button class="${on ? 'btn-txt' : 'btn-sec'}" ${on ? 'style="color:var(--suave)"' : ''} data-a="${on ? 'desligarPush' : 'ligarPush'}">${on ? 'Desativar notificações' : 'Ativar notificações'}</button>`;
+    <button class="${on ? 'btn-txt' : 'btn-sec'}" ${on ? 'style="color:var(--suave)"' : ''} data-a="${on ? 'desligarPush' : 'ligarPush'}">${on ? 'Desativar notificações' : 'Ativar notificações'}</button>
+    <p class="explica" style="margin-top:10px">🔊 Som próprio: <a href="sons/balanca.wav" download="balanca.wav">baixe o som “Balança”</a> e escolha-o nas configurações de notificação do Equilibra no celular (toque e segure uma notificação › ⚙️ › Som).</p>`;
 }
 
 /* ============================================================

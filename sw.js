@@ -1,6 +1,6 @@
 /* Equilibra - service worker
    Busca sempre a versão mais nova quando há internet e usa a cópia guardada quando não há. */
-const VERSAO = 'equilibra-v18';
+const VERSAO = 'equilibra-v20';
 const ARQUIVOS = ['./equilibra.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -40,7 +40,7 @@ self.addEventListener('push', e => {
     ws.forEach(w => w.postMessage({ equilibra: 'push' }));
     if (aberto) return;
     return self.registration.showNotification(String(d.titulo || n.title || 'Equilibra').slice(0, 60), {
-      body: String(d.corpo || n.body || 'Novidades no Equilibra').slice(0, 200), icon: './icon-192.png', badge: './icon-192.png',
+      body: String(d.corpo || n.body || 'Novidades no Equilibra').slice(0, 200), icon: './icon-192.png', badge: './badge-96.png',
       tag: String(d.tag || 'equilibra'), renotify: true
     });
   }));
