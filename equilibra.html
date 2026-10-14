@@ -1052,6 +1052,7 @@ function telaBoas() {
   <button class="btn cheio" style="margin:20px 0 0;width:100%" data-a="comecar">Começar</button>
   <div class="ou">ou</div>
   <button class="btn-sec cheio" style="margin:0;width:100%" data-a="escanear">📷 Escanear QR da outra pessoa</button>
+  <button class="btn-txt" style="width:100%;margin-top:8px;color:var(--suave)" data-a="admin">🔑 Sou o administrador</button>
   <p class="explica" style="margin-top:10px">Use esta opção no celular da segunda pessoa. No celular da primeira, abra Conta › “Conectar o celular de…” para mostrar o QR. Também dá para ler o QR com a câmera do celular.</p></main>`;
 }
 
@@ -1352,7 +1353,8 @@ function blocoSync() {
     <button class="btn" data-a="ativarSync">Ativar sincronização</button>
     <h2 style="margin-top:22px">A outra pessoa já ativou?</h2>
     <p class="explica">Peça para ela abrir Conta › “Conectar o celular de…” e leia o QR que aparecer.</p>
-    <button class="btn-sec" data-a="escanear">📷 Escanear QR</button>`;
+    <button class="btn-sec" data-a="escanear">📷 Escanear QR</button>
+    <button class="btn-txt" style="display:block;margin-top:8px;color:var(--suave)" data-a="admin">🔑 Sou o administrador</button>`;
   }
   const ult = s.ultima ? quando(s.ultima) : 'ainda não sincronizou';
   const erro = ui.sync.estado === 'erro' && ui.sync.msg;
@@ -1837,6 +1839,9 @@ const AC = {
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   formRateio() { abrirSheet(formRateio()); },
+  admin() { abrirSheet(sheetAdmin()); },
+  adminListar() { adminListar(); },
+  adminSou(d) { adminSou(d.nome); },
   salvarPix() {
     const tipo = $('#pix-tipo').value, chave = normalizarChave(tipo, $('#pix-chave').value);
     const p = { tipo, chave, nome: semAcento($('#pix-nome').value).slice(0, 25), cidade: semAcento($('#pix-cidade').value).slice(0, 15), ts: Date.now() };
@@ -2697,6 +2702,7 @@ function msgErro(e) {
   if (m === 'convite-usado') return 'Este QR já foi lido por outro celular. Peça um QR novo.';
   if (m === 'resposta-invalida') return 'O endereço não respondeu como esperado. Confira se o Apps Script foi publicado (nova versão) com acesso “Qualquer pessoa”.';
   if (m === 'ocupado') return 'O servidor está ocupado. Tente de novo em instantes.';
+  if (m === 'codigo-invalido') return 'Código inválido, vencido ou já usado. Gere outro no Apps Script (função gerarCodigoAdmin).';
   if (m === 'dados') return 'O servidor recusou os dados enviados. Se você acabou de atualizar o app, publique também a nova versão do Apps Script.';
   if (semRede(m)) return 'Sem internet agora. Seus dados continuam salvos neste aparelho.';
   return m;
@@ -2912,6 +2918,55 @@ function abrirConviteDaUrl() {
   const c = lerConvite(location.hash);
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} /* tira o convite da barra de endereço */
   if (c) entrarComConvite(c); else toast('QR inválido. Peça um QR novo.');
+}
+
+/* --- administrador: volta a entrar com um código gerado no Apps Script, sem depender de outro celular --- */
+function sheetAdmin() {
+  sheetEstado = { admin: true };
+  const url = (data && data.sync && data.sync.url) || '';
+  return `<h2>🔑 Entrar como administrador</h2><div class="erro" id="erro" role="alert" hidden></div>
+    <p class="explica">No computador, no Apps Script da conta do servidor, escolha “gerarCodigoAdmin” › Executar e copie o código do Registro de execução. Vale 10 minutos e só para um celular.</p>
+    <label class="campo"><span>Endereço do Apps Script (termina em /exec)</span><input id="adm-url" type="url" autocomplete="off" value="${esc(url)}"></label>
+    <label class="campo"><span>Código do administrador</span><input id="adm-cod" autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX" maxlength="9"></label>
+    <div id="adm-pessoas"></div>
+    <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="adminListar">Continuar</button></div>`;
+}
+async function adminListar() {
+  const url = $('#adm-url').value.trim(), codigo = $('#adm-cod').value.trim();
+  if (!/^https:\/\/script\.google\.com\/\S+\/exec$/.test(url)) return erroForm('Cole o endereço do Apps Script (começa com https://script.google.com e termina em /exec).');
+  try {
+    const j = await chamar({ url, token: '' }, { acao: 'adminListar', codigo });
+    sheetEstado = { admin: true, url, codigo, pessoas: j.pessoas };
+    $('#adm-pessoas').innerHTML = '<span class="rot">Quem é você?</span>' + j.pessoas.map(x =>
+      `<button class="opcao" data-a="adminSou" data-nome="${esc(x.nome)}">👤 Sou ${esc(x.nome)} <small>(${x.espacos.length} ${x.espacos.length > 1 ? 'duplas' : 'dupla'})</small></button>`).join('');
+  } catch (e) { erroForm(msgErro(e)); }
+}
+async function adminSou(nomeEscolhido) {
+  const se = sheetEstado || {}, quem = (se.pessoas || []).find(x => x.nome === nomeEscolhido);
+  if (bioOcupado || !quem) return;
+  bioOcupado = true;
+  try {
+    const tokens = {}; quem.espacos.forEach(e => { tokens[e] = novaChave(); });
+    const j = await chamar({ url: se.url, token: '' }, { acao: 'adminEntrar', codigo: se.codigo, nome: nomeEscolhido, tokens });
+    let primeiro = null;
+    for (const du of j.duplas) {
+      const sync = { url: se.url, token: tokens[du.espaco], espaco: du.espaco, ultima: 0 };
+      let dd = amigos.ids.map(carregarPar).find(x => x && x.sync && x.sync.url === se.url && x.sync.espaco === du.espaco);
+      if (dd) { dd.sync = sync; dd.config.eu = du.autor; }
+      else {
+        /* aparelho vazio (ou só com os nomes do Começar): a primeira dupla ocupa o lugar principal */
+        const substituir = !primeiro && (!data || (!syncAtiva() && !data.eventos.length && amigos.ids.length <= 1));
+        dd = { v: 2, config: { nomes: { a: du.nomes.a, b: du.nomes.b }, nomesTs: 0, eu: du.autor }, eventos: [], sync };
+        if (!substituir) { dd.parId = uid(); copiarChaveDigital(dd); }
+      }
+      try { await syncPar(dd); } catch (e) {} /* recupera o histórico; se falhar, a próxima sincronização tenta de novo */
+      store.save(dd); registrarPar(dd);
+      if (!primeiro) primeiro = dd;
+    }
+    bioOcupado = false;
+    fecharSheet(); abrirPar(primeiro); fim(); sincronizarOutros();
+    toast(`Bem-vindo de volta, ${nomeEscolhido}. ${j.duplas.length > 1 ? j.duplas.length + ' duplas recuperadas.' : 'Dupla recuperada.'}`);
+  } catch (e) { bioOcupado = false; erroForm(msgErro(e)); }
 }
 
 /* --- ler o QR com a câmera, dentro do app --- */
