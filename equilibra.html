@@ -255,6 +255,11 @@ img.avatar{object-fit:cover;background:var(--linha)}
 .faixa button.on{border-color:var(--verde);background:var(--verde-claro);color:var(--verde-esc)}
 .faixa button.ponto::after{content:"";position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:var(--deve);border:2px solid var(--papel)}
 .qr{display:flex;justify-content:center;margin:14px 0 6px}
+.pix{border:2px solid var(--verde-claro);border-radius:12px;padding:12px;margin:0 0 14px}
+.comprov{margin:12px 16px;padding:14px;border-radius:12px;border:1px dashed var(--suave)}
+.comprov-tit{font-weight:700;margin-bottom:8px}
+.comprov-l{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--linha);font-size:14px}
+.comprov-l span{color:var(--suave);flex:none}.comprov-l b{text-align:right;word-break:break-all}
 .rat{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--papel)}
 .rat .mid{flex:1;display:flex;flex-direction:column}
 .rat small{font-size:13px}
@@ -496,7 +501,7 @@ function eventoValido(e, agora = Date.now()) {
         opt(d.pagouModo, x => txt(x, 10)) && opt(d.tipo, x => txt(x, 10)) && opt(d.ent, obj) && opt(d.nf, obj) &&
         opt(d.rec, x => x === 'mensal' || x === 'semanal') && opt(d.origem, x => txt(x, 120)) && opt(d.rateio, rateioOk);
     }
-    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120)) && opt(d.rateio, x => txt(x, 120));
+    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120)) && opt(d.rateio, x => txt(x, 120)) && opt(d.pix, pixOk);
     case 'confirma': return txt(d.rev, 120) && obj(d.ass);
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
@@ -1429,6 +1434,7 @@ function telaConta() {
     ${blocoSync()}
     ${blocoDigital()}
     ${blocoNotif()}
+    ${blocoPix()}
     <h2>Nomes</h2>
     <label class="campo"><span>Seu nome</span><input id="c-a" value="${esc(nome(EU()))}" maxlength="24"></label>
     <label class="campo"><span>Nome da outra pessoa</span><input id="c-b" value="${esc(nome(OUT()))}" maxlength="24"></label>
@@ -1438,6 +1444,7 @@ function telaConta() {
     ${blocoTipos()}
     ${blocoTema()}
     <h2>Dados</h2>
+    <button class="opcao" data-a="comprovantes">🧾 Comprovantes de pagamento</button>
     <button class="opcao" data-a="csv" data-g="">📄 Exportar tudo em CSV</button>
     <button class="opcao" data-a="exportar">💾 Baixar backup (JSON)</button>
     <button class="opcao" data-a="importar">📥 Importar backup (mescla com os dados atuais)</button>
@@ -1613,7 +1620,7 @@ function lerForm(id) {
 function formPagamento(gid, conta) {
   const D = derivar(), gs = gruposAtivos(D);
   if (!gid) { const com = gs.find(g => saldoGrupo(D, g.id)[EU()] !== 0); gid = (com || gs[0]).id; }
-  sheetEstado = { pagamento: true, rateio: conta ? conta.rateio.id : null };
+  sheetEstado = { pagamento: true, rateio: conta ? conta.rateio.id : null, descPix: conta ? conta.desc : '', txid: 'EQ' + uid().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(-10) };
   return `<h2>${conta ? 'Paguei minha parte' : 'Acertar contas'}</h2><div class="erro" id="erro" role="alert" hidden></div>${conta ? `<p class="explica">Pagamento da sua parte de “${esc(conta.desc)}”. Vale quando ${esc(nome(OUT()))} confirmar que recebeu.</p>` : ''}
   <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Quem pagou</span><select id="p-dir"></select></label>
@@ -1622,13 +1629,15 @@ function formPagamento(gid, conta) {
     <label class="campo"><span>Forma</span><select id="p-forma">${FORMAS.map(f => `<option>${f}</option>`).join('')}</select></label>
     <label class="campo"><span>Data</span><input id="p-data" type="date" value="${hoje()}"></label>
   </div>
-  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarPagamento">Registrar</button></div>`;
+  <div id="pix-area"></div>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarPagamento">${conta ? '✔ Já paguei' : 'Registrar'}</button></div>`;
 }
 function preencherPagamento() {
   const D = derivar(), gid = $('#p-grupo').value, s = saldoGrupo(D, gid)[EU()];
   const eu = EU(), ou = OUT();
   $('#p-dir').innerHTML = `<option value="${eu}>${ou}" ${s <= 0 ? 'selected' : ''}>Você pagou ${esc(nome(ou))}</option><option value="${ou}>${eu}" ${s > 0 ? 'selected' : ''}>${esc(nome(ou))} pagou você</option>`;
   $('#p-valor').value = s ? fmtIn(Math.abs(s)) : '';
+  atualizarPix();
 }
 
 /* --- grupo --- */
@@ -1828,6 +1837,31 @@ const AC = {
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   formRateio() { abrirSheet(formRateio()); },
+  salvarPix() {
+    const tipo = $('#pix-tipo').value, chave = normalizarChave(tipo, $('#pix-chave').value);
+    const p = { tipo, chave, nome: semAcento($('#pix-nome').value).slice(0, 25), cidade: semAcento($('#pix-cidade').value).slice(0, 15), ts: Date.now() };
+    if (!chave) return toast(`Chave inválida para o tipo ${TIPOS_PIX[tipo]}. Confira os números.`);
+    if (!p.nome || !p.cidade) return toast('Preencha o nome e a cidade (o Pix exige).');
+    try { localStorage.setItem(KEY_PIX, JSON.stringify(p)); } catch (e) {}
+    toast('Chave Pix salva. Seus amigos já podem pagar você com Pix.'); fim(); sincronizarOutros();
+  },
+  removerPix() { confirmar('Remover sua chave Pix? Seus amigos deixam de ver o QR para pagar você.', 'Remover', () => { try { localStorage.removeItem(KEY_PIX); } catch (e) {} fim(); sincronizarOutros(); }); },
+  async copiarPix() {
+    const c = sheetEstado && sheetEstado.pixCod; if (!c) return;
+    try { await navigator.clipboard.writeText(c); toast('Código Pix copiado. Cole no app do seu banco.'); }
+    catch (e) { $('#pix-qr').innerHTML = `<input readonly value="${esc(c)}" onfocus="this.select()" style="width:100%">`; toast('Copie o código abaixo.'); }
+  },
+  verQrPix() { const c = sheetEstado && sheetEstado.pixCod; if (c) $('#pix-qr').innerHTML = `<div class="qr">${QR.svg(c)}</div>`; },
+  comprovantes() {
+    const D = derivar(), ps = [...D.pag.values()].filter(p => !p.apagado).sort((x, y) => y.ts - x.ts);
+    abrirSheet(`<h2>🧾 Comprovantes</h2>${ps.length ? ps.map(p => `<button class="opcao" data-a="abrirPagamento" data-id="${esc(p.id)}">${p.st === 'confirmado' ? '✅' : p.st === 'recusado' ? '❌' : '⏳'} ${esc(textoPag(p))} · ${R(p.valor)}<br><small>${esc(quandoExato(p.revs[0].ts))}${p.forma ? ' · ' + esc(p.forma) : ''}</small></button>`).join('') : '<p class="explica">Nenhum pagamento com ' + esc(nome(OUT())) + ' ainda.</p>'}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+  },
+  async compartilharComprovante(d) {
+    const D = derivar(), p = D.pag.get(d.id); if (!p) return;
+    const txt = '🧾 Comprovante de pagamento — Equilibra\n' + linhasComprovante(p, D).map(([k, v]) => `${k}: ${v}`).join('\n');
+    try { if (navigator.share) await navigator.share({ title: 'Comprovante Equilibra', text: txt }); else { await navigator.clipboard.writeText(txt); toast('Comprovante copiado.'); } }
+    catch (e) {}
+  },
   ligarPush() { ligarPush(true); },
   desligarPush() { ligarPush(false); },
   salvarRateio() { salvarRateio(); },
@@ -1837,6 +1871,7 @@ const AC = {
     const e = estadoNoPar(D, x.rateio.id, EU(), OUT());
     abrirSheet(formPagamento(x.grupo, x)); preencherPagamento();
     $('#p-dir').value = `${EU()}>${OUT()}`; $('#p-valor').value = fmtIn(x.conta.devido[EU()] - (e.g || 0));
+    atualizarPix();
   },
   acertar(d) { abrirSheet(formPagamento(d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : ''))); preencherPagamento(); },
   async salvarPagamento() {
@@ -1846,6 +1881,13 @@ const AC = {
     const [de, para] = $('#p-dir').value.split('>');
     const dados = { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() };
     if (sheetEstado.rateio) dados.rateio = sheetEstado.rateio;
+    if (dados.forma === 'Pix') {
+      const e2e = (($('#p-e2e') || {}).value || '').trim().toUpperCase(), pix = pixDe(data, para);
+      if (e2e && !e2eOk(e2e)) return erroForm('O ID da transação (E2E) tem 32 caracteres e começa com E. Confira no comprovante do banco ou deixe em branco.');
+      dados.pix = { txid: sheetEstado.txid };
+      if (pix) { dados.pix.chave = mascarar(pix.chave); dados.pix.nome = semAcento(pix.nome).slice(0, 25); }
+      if (e2e) dados.pix.e2e = e2e;
+    }
     bioOcupado = true;
     try { await addEventoAssinado({ tipo: 'pagamento', dados }); }
     catch (er) { bioOcupado = false; return erroForm(msgBio(er)); }
@@ -1854,7 +1896,7 @@ const AC = {
   },
   abrirPagamento(d) {
     const D = derivar(), p = D.pag.get(d.id); if (!p || p.apagado) return;
-    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p, D)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
+    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p, D)}${comprovanteHTML(p, D)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
   },
   apagarPagamento(d) {
     const p = derivar().pag.get(d.id); if (!p) return;
@@ -1966,6 +2008,7 @@ document.addEventListener('change', e => {
   else if (id === 'f-pagou') { $('#pagoCampos').innerHTML = pagoHTML(e.target.value, null); atualizarHint(); }
   else if (id === 'f-data' && sheetEstado && sheetEstado.nf) atualizarNotaForm();
   else if (id === 'p-grupo') preencherPagamento();
+  else if (id === 'p-dir' || id === 'p-forma') atualizarPix();
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
   else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
@@ -1981,6 +2024,8 @@ document.addEventListener('input', e => {
     ui.busca = e.target.value;
     if (ui.view && ui.view.t === 'grupo') $('#lista').innerHTML = listaGrupo(derivar(), ui.view.id, ui.busca);
   } else if (e.target.id === 't-nome' || e.target.id === 't-emoji') atualizarPrevia();
+  else if (e.target.id === 'p-valor') atualizarPix();
+  else if (e.target.id === 'p-e2e' && sheetEstado) sheetEstado.e2e = e.target.value;
   else if (sheetEstado && sheetEstado.rateio === true) atualizarRateio();
   else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
 });
@@ -2107,6 +2152,126 @@ const QR = (() => {
   }
   return { svg };
 })();
+
+/* ============================================================
+   PIX (BR Code do Banco Central, gerado aqui, sem internet)
+   Cada pessoa cadastra a própria chave (vale para todos os
+   amigos e viaja na config, como a foto). O código leva a chave,
+   o valor e um identificador; o banco de quem paga mostra o nome
+   de quem recebe e o pagamento acontece no app do banco.
+   ============================================================ */
+const KEY_PIX = 'equilibra:pix';
+const TIPOS_PIX = { cpf: 'CPF', cnpj: 'CNPJ', celular: 'Celular', email: 'E-mail', aleatoria: 'Chave aleatória' };
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9 .\-]/g, '').replace(/\s+/g, ' ').trim();
+function cpfOk(d) {
+  if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +d[i] * (n + 1 - i); return (s * 10) % 11 % 10; };
+  return dv(9) === +d[9] && dv(10) === +d[10];
+}
+function cnpjOk(d) {
+  if (!/^\d{14}$/.test(d) || /^(\d)\1{13}$/.test(d)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +d[i] * ((n - 1 - i) % 8 + 2); const r = s % 11; return r < 2 ? 0 : 11 - r; };
+  return dv(12) === +d[12] && dv(13) === +d[13];
+}
+/* deixa a chave no formato que o Pix exige; null = chave inválida */
+function normalizarChave(tipo, v) {
+  v = String(v || '').trim();
+  const dig = v.replace(/\D/g, '');
+  if (tipo === 'cpf') return cpfOk(dig) ? dig : null;
+  if (tipo === 'cnpj') return cnpjOk(dig) ? dig : null;
+  if (tipo === 'celular') { const n = /^55\d{10,11}$/.test(dig) && v.startsWith('+') ? dig.slice(2) : dig; return /^\d{10,11}$/.test(n) ? '+55' + n : null; }
+  if (tipo === 'email') { const e = v.toLowerCase(); return e.length <= 77 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null; }
+  if (tipo === 'aleatoria') { const a = v.toLowerCase(); return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(a) ? a : null; }
+  return null;
+}
+const pixValido = p => !!p && typeof p === 'object' && TIPOS_PIX[p.tipo] && normalizarChave(p.tipo, p.chave) === p.chave &&
+  semAcento(p.nome).length >= 1 && semAcento(p.nome).length <= 25 && semAcento(p.cidade).length >= 1 && semAcento(p.cidade).length <= 15;
+const pixMeu = () => { try { const p = JSON.parse(localStorage.getItem(KEY_PIX) || 'null'); return pixValido(p) ? p : null; } catch (e) { return null; } };
+const pixDe = (dd, p) => (p === dd.config.eu ? pixMeu() : (dd.config.pix && pixValido(dd.config.pix[p]) ? dd.config.pix[p] : null));
+const mascarar = k => (String(k).length <= 6 ? '•••' : String(k).slice(0, 3) + '•••' + String(k).slice(-3));
+function crc16(s) {
+  let c = 0xFFFF;
+  for (let i = 0; i < s.length; i++) {
+    c ^= s.charCodeAt(i) << 8;
+    for (let b = 0; b < 8; b++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xFFFF : (c << 1) & 0xFFFF;
+  }
+  return c.toString(16).toUpperCase().padStart(4, '0');
+}
+/* "Pix copia e cola" estático (padrão EMV do Banco Central), com o dígito verificador CRC16 no fim */
+function brCode({ chave, nome, cidade, valor, txid, desc }) {
+  const tlv = (id, v) => id + String(v.length).padStart(2, '0') + v;
+  let conta = tlv('00', 'br.gov.bcb.pix') + tlv('01', chave);
+  const d = semAcento(desc).slice(0, Math.max(0, 99 - conta.length - 4));
+  if (d) conta += tlv('02', d);
+  const p = tlv('00', '01') + tlv('26', conta) + tlv('52', '0000') + tlv('53', '986') + (valor > 0 ? tlv('54', (valor / 100).toFixed(2)) : '') +
+    tlv('58', 'BR') + tlv('59', semAcento(nome).slice(0, 25)) + tlv('60', semAcento(cidade).slice(0, 15)) + tlv('62', tlv('05', txid || '***')) + '6304';
+  return p + crc16(p);
+}
+/* ID E2E do Pix: E + ISPB do banco que pagou (8) + data e hora AAAAMMDDhhmm (12) + 11 caracteres */
+function e2eOk(s) { return /^E\d{8}\d{12}[A-Za-z0-9]{11}$/.test(String(s || '')); } /* declarada: usada ao carregar (eventoValido) */
+const BANCOS = { '00000000': 'Banco do Brasil', '00360305': 'Caixa', '60746948': 'Bradesco', '60701190': 'Itaú', '90400888': 'Santander',
+  '18236120': 'Nubank', '00416968': 'Banco Inter', '10573521': 'Mercado Pago', '22896431': 'PicPay', '31872495': 'C6 Bank', '08561701': 'PagBank',
+  '30306294': 'BTG Pactual', '92894922': 'Banco Original', '02038232': 'Sicoob' };
+function e2eInfo(s) {
+  if (!e2eOk(s)) return null;
+  const ispb = s.slice(1, 9), t = s.slice(9, 21);
+  return { banco: BANCOS[ispb] || 'banco ' + ispb, hora: `${t.slice(6, 8)}/${t.slice(4, 6)}/${t.slice(0, 4)} ${t.slice(8, 10)}:${t.slice(10, 12)}` };
+}
+function pixOk(x) {
+  return !!x && typeof x === 'object' && (x.txid === undefined || /^[A-Za-z0-9]{1,25}$/.test(x.txid)) && (x.e2e === undefined || e2eOk(x.e2e)) &&
+    (x.chave === undefined || (typeof x.chave === 'string' && x.chave.length <= 80)) && (x.nome === undefined || (typeof x.nome === 'string' && x.nome.length <= 25));
+}
+function blocoPix() {
+  const p = pixMeu();
+  return `<h2>💠 Sua chave Pix</h2>
+    <p class="explica">Para seus amigos pagarem você com QR ou “Pix copia e cola”, já com o valor certo. Vale para todos os amigos.</p>
+    ${p ? `<p class="estado ok">${esc(TIPOS_PIX[p.tipo])}: ${esc(p.chave)}</p>` : '<p class="estado falta">Nenhuma chave cadastrada</p>'}
+    <label class="campo"><span>Tipo de chave</span><select id="pix-tipo">${Object.entries(TIPOS_PIX).map(([k, r]) => `<option value="${k}" ${p && p.tipo === k ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+    <label class="campo"><span>Chave</span><input id="pix-chave" autocomplete="off" value="${esc(p ? p.chave : '')}"></label>
+    <div class="dupla">
+      <label class="campo"><span>Nome (como no banco)</span><input id="pix-nome" maxlength="25" value="${esc(p ? p.nome : semAcento(nome(EU())).slice(0, 25))}"></label>
+      <label class="campo"><span>Cidade</span><input id="pix-cidade" maxlength="15" value="${esc(p ? p.cidade : '')}"></label>
+    </div>
+    <button class="btn" data-a="salvarPix">Salvar chave Pix</button>${p ? '<button class="btn-txt" data-a="removerPix">Remover</button>' : ''}`;
+}
+/* área Pix dentro do "Acertar contas": quem recebe mostra o QR; quem paga copia o código */
+function atualizarPix() {
+  const el = $('#pix-area'); if (!el || !sheetEstado) return;
+  const [de, para] = (($('#p-dir') || {}).value || '').split('>');
+  if (!para || ($('#p-forma') || {}).value !== 'Pix') { el.innerHTML = ''; return; }
+  const valor = parseValor(($('#p-valor') || {}).value) || 0, pix = pixDe(data, para), recebo = para === EU();
+  let h;
+  if (!pix) {
+    h = `<p class="dica">💠 ${recebo ? 'Cadastre sua chave Pix em Conta para receber com QR.' : esc(nome(para)) + ' ainda não cadastrou uma chave Pix.'}</p>`;
+  } else {
+    const cod = sheetEstado.pixCod = brCode({ ...pix, valor, txid: sheetEstado.txid, desc: 'Equilibra' + (sheetEstado.descPix ? ' ' + sheetEstado.descPix : '') });
+    h = `<div class="pix"><p><b>💠 Pix para ${esc(pix.nome)}</b><br><small>${esc(TIPOS_PIX[pix.tipo])} ${esc(recebo ? pix.chave : mascarar(pix.chave))}${valor ? ' · ' + R(valor) : ' · valor livre'}</small></p>
+      ${recebo ? `<div class="qr">${QR.svg(cod)}</div><p class="dica">${esc(nome(de))} escaneia este QR no app do banco.</p>`
+        : `<button class="btn-sec" style="width:100%" data-a="copiarPix">📋 Copiar código Pix</button><button class="btn-txt" data-a="verQrPix">Ver o QR</button><div id="pix-qr"></div>
+        <p class="dica">Cole no app do seu banco (Pix › Copia e cola). Confira se o nome que o banco mostra é ${esc(pix.nome)}.</p>`}</div>`;
+  }
+  el.innerHTML = h + `<label class="campo"><span>ID da transação (E2E) — opcional, está no comprovante do banco</span><input id="p-e2e" autocomplete="off" maxlength="32" placeholder="E00000000202610141530…" value="${esc(sheetEstado.e2e || '')}"></label>`;
+}
+const quandoExato = ts => new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+/* comprovante interno: tudo o que o Equilibra sabe deste pagamento, com as duas assinaturas */
+function linhasComprovante(p, D) {
+  const r = p.revs[0], cf = r.cf, x = p.pix && pixOk(p.pix) ? p.pix : {}, e2 = e2eInfo(x.e2e);
+  const conta = p.rateio && [...D.desp.values()].find(d => d.rateio && d.rateio.id === p.rateio);
+  const g = D.grupos.get(p.grupo);
+  const l = [['Valor', R(p.valor)], ['De', nome(p.de)], ['Para', nome(p.para)], ['Forma', p.forma || '—']];
+  if (x.chave) l.push(['Chave Pix', (x.nome ? x.nome + ' · ' : '') + x.chave]);
+  l.push(['Referente a', conta ? `${conta.desc} (conta de ${R(conta.rateio.total)})` : (g ? g.nome : '—')]);
+  if (x.txid) l.push(['Código Equilibra', x.txid]);
+  if (e2) l.push(['ID do Pix (E2E)', x.e2e], ['Banco de origem', e2.banco], ['Hora do Pix', e2.hora]);
+  l.push(['Pagamento registrado', `${quandoExato(r.ts)} por ${nome(r.autor)}${data.verif && data.verif[r.id] ? ' (assinado ✔)' : ''}`]);
+  if (p.st === 'confirmado' && cf && !cf.auto) l.push(['Recebimento confirmado', `${quandoExato(cf.ts)} por ${nome(cf.autor)} ${cf.dados && cf.dados.ass && cf.dados.ass.rapida ? '(sem digital ⚡)' : '(com digital ✔)'}`]);
+  l.push(['Situação', p.apagado ? 'Apagado' : p.st === 'confirmado' ? '✅ Pago e confirmado' : p.st === 'recusado' ? '❌ Recusado' : '⏳ Aguardando confirmação de ' + nome(r.autor === 'a' ? 'b' : 'a')]);
+  return l;
+}
+function comprovanteHTML(p, D) {
+  return `<div class="comprov"><p class="comprov-tit">🧾 Comprovante de pagamento</p>${linhasComprovante(p, D).map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}
+    <button class="btn-sec" style="width:100%;margin-top:10px" data-a="compartilharComprovante" data-id="${esc(p.id)}">📤 Compartilhar</button></div>`;
+}
 
 /* ============================================================
    CONTA ENTRE VÁRIOS AMIGOS
@@ -2452,7 +2617,7 @@ function hash(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5
 function pacoteMeu(dd) {
   const s = dd.sync, eu = dd.config.eu, meus = dd.eventos.filter(e => e.autor === eu);
   const i = s.ultimoId ? meus.findIndex(e => e.id === s.ultimoId) : -1; /* não achou: manda tudo (o servidor ignora repetidos) */
-  const config = { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0, foto: fotoDe(dd, eu), fotoTs: (dd.config.fotosTs || {})[eu] || 0 };
+  const config = { nomes: dd.config.nomes, ts: dd.config.nomesTs || 0, foto: fotoDe(dd, eu), fotoTs: (dd.config.fotosTs || {})[eu] || 0, pix: pixMeu() };
   const ch = hash(JSON.stringify(config));
   return { novos: meus.slice(i + 1), config: ch !== s.cfgEnviado ? config : undefined, ch };
 }
@@ -2481,7 +2646,10 @@ function aplicarFoto(dd, c, p) {
 /* o que veio do outro: só os registros a partir de "desde" e a config só quando mudou */
 function mesclarDoOutro(dd, o) {
   const n = mesclar(dd, o, outroDe(dd));
-  if (o.config) { aplicarNomes(dd, o.config); aplicarFoto(dd, o.config, outroDe(dd)); dd.sync.cfgOutro = o.configTs || 0; }
+  if (o.config) {
+    aplicarNomes(dd, o.config); aplicarFoto(dd, o.config, outroDe(dd)); dd.sync.cfgOutro = o.configTs || 0;
+    if ('pix' in o.config) dd.config.pix = { ...(dd.config.pix || {}), [outroDe(dd)]: pixValido(o.config.pix) ? o.config.pix : null };
+  }
   if (Number.isInteger(o.total)) dd.sync.desde = o.total;
   return n;
 }
