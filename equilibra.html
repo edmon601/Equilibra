@@ -501,7 +501,7 @@ function eventoValido(e, agora = Date.now()) {
         opt(d.pagouModo, x => txt(x, 10)) && opt(d.tipo, x => txt(x, 10)) && opt(d.ent, obj) && opt(d.nf, obj) &&
         opt(d.rec, x => x === 'mensal' || x === 'semanal') && opt(d.origem, x => txt(x, 120)) && opt(d.rateio, rateioOk);
     }
-    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120)) && opt(d.rateio, x => txt(x, 120)) && opt(d.pix, pixOk);
+    case 'pagamento': return pessoa(d.de) && pessoa(d.para) && d.de !== d.para && cent(d.valor) && d.valor > 0 && opt(d.data, dia) && opt(d.forma, x => txt(x, 30)) && opt(d.grupo, x => txt(x, 120)) && opt(d.rateio, x => txt(x, 120)) && opt(d.despesa, x => txt(x, 120)) && opt(d.pix, pixOk);
     case 'confirma': return txt(d.rev, 120) && obj(d.ass);
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
@@ -1252,6 +1252,7 @@ function telaDespesa(D, id) {
     ${rateioOk(d.rateio) ? blocoRateio(D, d) : ''}
     ${nfInfo(d.nf) ? `<section class="nf"><p class="nf-tit">🧾 Nota fiscal</p>${nfDetalheHTML(d.nf)}</section>` : ''}
     ${blocoStatus(d, D)}
+    ${blocoPagarDespesa(D, d)}
     ${pessoas}
     <div class="acoes" style="padding:0 16px;margin:16px 0">${d.exclusaoPendente ? '' : `<button class="btn-sec" data-a="editarDespesa" data-id="${esc(id)}">Editar</button><button class="btn-txt" data-a="apagarDespesa" data-id="${esc(id)}">${retiravel(d) ? 'Retirar' : 'Apagar'}</button>`}</div>
     ${histHTML(D, d)}
@@ -1622,8 +1623,8 @@ function lerForm(id) {
 function formPagamento(gid, conta) {
   const D = derivar(), gs = gruposAtivos(D);
   if (!gid) { const com = gs.find(g => saldoGrupo(D, g.id)[EU()] !== 0); gid = (com || gs[0]).id; }
-  sheetEstado = { pagamento: true, rateio: conta ? conta.rateio.id : null, txid: 'EQ' + uid().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(-10) };
-  return `<h2>${conta ? 'Paguei minha parte' : 'Acertar contas'}</h2><div class="erro" id="erro" role="alert" hidden></div>${conta ? `<p class="explica">Pagamento da sua parte de “${esc(conta.desc)}”. Vale quando ${esc(nome(OUT()))} confirmar que recebeu.</p>` : ''}
+  sheetEstado = { pagamento: true, despesa: conta ? conta.id : null, txid: 'EQ' + uid().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(-10) };
+  return `<h2>${conta ? `Pagamento de “${esc(conta.desc)}”` : 'Acertar contas'}</h2><div class="erro" id="erro" role="alert" hidden></div>${conta ? `<p class="explica">Vai direto para esta despesa. Pode ser o valor todo ou só uma parte. Vale quando quem recebe confirmar.</p>` : ''}
   <label class="campo"><span>Grupo</span><select id="p-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === gid ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Quem pagou</span><select id="p-dir"></select></label>
   <label class="campo"><span>Valor</span><span class="moeda"><b>R$</b><input id="p-valor" inputmode="decimal" placeholder="0,00"></span></label>
@@ -1632,7 +1633,7 @@ function formPagamento(gid, conta) {
     <label class="campo"><span>Data</span><input id="p-data" type="date" value="${hoje()}"></label>
   </div>
   <div id="pix-area"></div>
-  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarPagamento">${conta ? '✔ Já paguei' : 'Registrar'}</button></div>`;
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarPagamento">Registrar</button></div>`;
 }
 function preencherPagamento() {
   const D = derivar(), gid = $('#p-grupo').value, s = saldoGrupo(D, gid)[EU()];
@@ -1871,13 +1872,13 @@ const AC = {
   desligarPush() { ligarPush(false); },
   salvarRateio() { salvarRateio(); },
   qrRateio(d) { qrRateio(d.id); },
-  pagarParte(d) {
-    const D = derivar(), x = D.desp.get(d.id); if (!x || !rateioOk(x.rateio)) return;
-    const e = estadoNoPar(D, x.rateio.id, EU(), OUT());
+  pagarDespesa(d) {
+    const D = derivar(), x = D.desp.get(d.id), sd = saldoDespesa(D, x); if (!sd || sd.falta <= 0) return;
     abrirSheet(formPagamento(x.grupo, x)); preencherPagamento();
-    $('#p-dir').value = `${EU()}>${OUT()}`; $('#p-valor').value = fmtIn(x.conta.devido[EU()] - (e.g || 0));
+    $('#p-dir').value = `${sd.dev}>${sd.cred}`; $('#p-forma').value = 'Pix'; $('#p-valor').value = fmtIn(sd.falta);
     atualizarPix();
   },
+  pagarParte(d) { AC.pagarDespesa(d); },
   acertar(d) { abrirSheet(formPagamento(d.g || (ui.view && ui.view.t === 'grupo' ? ui.view.id : ''))); preencherPagamento(); },
   async salvarPagamento() {
     if (bioOcupado) return;
@@ -1885,7 +1886,7 @@ const AC = {
     if (!(valor > 0)) return erroForm('Informe um valor maior que zero.');
     const [de, para] = $('#p-dir').value.split('>');
     const dados = { grupo: $('#p-grupo').value, de, para, valor, forma: $('#p-forma').value, data: $('#p-data').value || hoje() };
-    if (sheetEstado.rateio) dados.rateio = sheetEstado.rateio;
+    if (sheetEstado.despesa) dados.despesa = sheetEstado.despesa;
     if (dados.forma === 'Pix') {
       const e2e = (($('#p-e2e') || {}).value || '').trim().toUpperCase(), pix = pixDe(data, para);
       if (e2e && !e2eOk(e2e)) return erroForm('O ID da transação (E2E) tem 32 caracteres e começa com E. Confira no comprovante do banco ou deixe em branco.');
@@ -2265,7 +2266,8 @@ function linhasComprovante(p, D) {
   const g = D.grupos.get(p.grupo);
   const l = [['Valor', R(p.valor)], ['De', nome(p.de)], ['Para', nome(p.para)], ['Forma', p.forma || '—']];
   if (x.chave) l.push(['Chave Pix', (x.nome ? x.nome + ' · ' : '') + x.chave]);
-  l.push(['Referente a', conta ? `${conta.desc} (conta de ${R(conta.rateio.total)})` : (g ? g.nome : '—')]);
+  const desp = p.despesa && D.desp.get(p.despesa);
+  l.push(['Referente a', desp ? `${desp.desc} (${R(desp.valor)}${rateioOk(desp.rateio) ? ', conta de ' + R(desp.rateio.total) : ''})` : conta ? `${conta.desc} (conta de ${R(conta.rateio.total)})` : (g ? g.nome : '—')]);
   if (x.txid) l.push(['Código Equilibra', x.txid]);
   if (e2) l.push(['ID do Pix (E2E)', x.e2e], ['Banco de origem', e2.banco], ['Hora do Pix', e2.hora]);
   l.push(['Pagamento registrado', `${quandoExato(r.ts)} por ${nome(r.autor)}${data.verif && data.verif[r.id] ? ' (assinado ✔)' : ''}`]);
@@ -2308,12 +2310,31 @@ function cobertura(D, dev, cred) {
     let v = p.conta.valor;
     if (p.conta.de === cred && p.conta.para === dev) { livre -= v; continue; }
     if (p.conta.de !== dev) continue;
-    const alvo = p.conta.rateio && dividas.find(x => x.rid === p.conta.rateio);
+    const alvo = (p.conta.despesa && dividas.find(x => x.id === p.conta.despesa)) || (p.conta.rateio && dividas.find(x => x.rid === p.conta.rateio));
     if (alvo) v -= usar(alvo, v);
     livre += v;
   }
   for (const x of dividas) { if (livre <= 0) break; livre -= usar(x, livre); }
   return cob;
+}
+/* quanto falta pagar de uma despesa (só o confirmado conta) e quem deve a quem */
+function saldoDespesa(D, d) {
+  if (!d || !d.conta || d.apagada) return null;
+  const dev = ['a', 'b'].find(p => d.conta.pagou[p] - d.conta.devido[p] < 0); if (!dev) return null;
+  const cred = dev === 'a' ? 'b' : 'a', total = d.conta.devido[dev] - d.conta.pagou[dev];
+  const pago = Math.min(total, cobertura(D, dev, cred).get(d.id) || 0);
+  return { dev, cred, total, pago, falta: total - pago };
+}
+function blocoPagarDespesa(D, d) {
+  const sd = saldoDespesa(D, d); if (!sd) return '';
+  const pend = [...D.pag.values()].filter(p => !p.apagado && p.st === 'pendente' && p.proj && p.proj.despesa === d.id);
+  const aviso = pend.length ? `<p style="margin-top:6px">⏳ ${pend.length > 1 ? pend.length + ' pagamentos' : 'Pagamento de ' + R(pend[0].valor)} aguardando confirmação</p>` : '';
+  if (sd.falta <= 0) return `<div class="stbox ok"><b>✔ Esta despesa já foi paga</b></div>`;
+  const devo = sd.dev === EU(), rat = rateioOk(d.rateio);
+  return `<div class="stbox"><b>${devo ? `Você deve ${R(sd.falta)} desta despesa` : `${esc(nome(sd.dev))} deve ${R(sd.falta)} desta despesa`}</b>
+    ${sd.pago ? `<p style="margin-top:6px">Já pago: ${R(sd.pago)} de ${R(sd.total)}</p>` : ''}${aviso}
+    <button class="btn" style="width:100%;margin-top:10px" data-a="pagarDespesa" data-id="${esc(d.id)}">💠 ${devo ? (rat ? 'Pagar minha parte' : 'Pagar esta despesa') : 'Cobrar esta despesa'}</button>
+    <p class="explica" style="margin:6px 0 0">Pode pagar tudo ou só uma parte agora.</p></div>`;
 }
 /* estado de quem deve (dev) nesta conta, dentro de um par */
 function estadoNoPar(D, rid, dev, cred) {
@@ -2365,7 +2386,7 @@ function blocoRateio(D, d) {
     return `<div class="rat ${ok ? 'ok' : 'falta'}"><span class="mid"><b>${esc(p.n + voce)}</b><small>${esc(txt)}</small></span><b>${R(i === 0 ? info.total : p.v)}</b></div>`;
   }).join('');
   const bt = pagador ? `<button class="btn cheio" data-a="qrRateio" data-id="${esc(info.id)}">📲 Mostrar QR para confirmar</button>`
-    : minha.s === 'conf' ? `<button class="btn cheio" data-a="pagarParte" data-id="${esc(d.id)}">💸 Paguei minha parte</button>` : '';
+    : '';
   return `<h2 class="sec">Conta de ${R(info.total)} entre ${info.pessoas.filter(p => p.v > 0).length}</h2><div id="r-lista">${linhas}</div>${bt}`;
 }
 /* quem pagou publica o estado em cada par quando algo muda */
