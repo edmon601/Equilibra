@@ -258,6 +258,7 @@ img.avatar{object-fit:cover;background:var(--linha)}
 .pix{border:2px solid var(--verde-claro);border-radius:12px;padding:12px;margin:0 0 14px}
 .comprov{margin:12px 16px;padding:14px;border-radius:12px;border:1px dashed var(--suave)}
 .comprov-tit{font-weight:700;margin-bottom:8px}
+.anexo-img{width:100%;height:auto;border-radius:8px;border:1px solid var(--linha);background:#fff}
 .comprov-l{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--linha);font-size:14px}
 .comprov-l span{color:var(--suave);flex:none}.comprov-l b{text-align:right;word-break:break-all}
 .rat{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--papel)}
@@ -287,6 +288,7 @@ img.avatar{object-fit:cover;background:var(--linha)}
 <div id="toast" class="toast" role="status" hidden></div>
 <input type="file" id="arquivo" accept="application/json,.json" hidden>
 <input type="file" id="foto-arq" accept="image/*" hidden>
+<input type="file" id="anexo-arq" accept="image/*,application/pdf" hidden>
 <noscript>O Equilibra precisa de JavaScript para funcionar.</noscript>
 
 <script>
@@ -506,11 +508,13 @@ function eventoValido(e, agora = Date.now()) {
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
     case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000) && opt(d.rapida, x => x === true);
+    case 'anexo': return alvo && anexoTipoOk(d.tipo) && Number.isSafeInteger(d.tam) && d.tam > 0;
     case 'rateio_st': return alvo && Array.isArray(d.l) && d.l.length <= 50 && d.l.every(x => obj(x) && txt(x.s, 5) && opt(x.g, cent) && opt(x.r, y => y === 1));
   }
   return true;
 }
 /* conta entre vários: id, total, pessoas (a 0 é quem pagou) e i = a linha do amigo deste par */
+function anexoTipoOk(t) { return ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].indexOf(t) >= 0; } /* declarada: usada ao carregar */
 function rateioOk(r) {
   return !!r && typeof r === 'object' && typeof r.id === 'string' && /^[\w-]{4,60}$/.test(r.id) && Number.isSafeInteger(r.total) && r.total > 0 &&
     Array.isArray(r.pessoas) && r.pessoas.length >= 2 && r.pessoas.length <= 50 && Number.isInteger(r.i) && r.i > 0 && r.i < r.pessoas.length &&
@@ -1840,6 +1844,8 @@ const AC = {
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   formRateio() { abrirSheet(formRateio()); },
+  anexar(d) { anexoPag = d.id; $('#anexo-arq').click(); },
+  verOriginal(d) { verOriginal(d.id); },
   admin() { abrirSheet(sheetAdmin()); },
   adminListar() { adminListar(); },
   adminSou(d) { adminSou(d.nome); },
@@ -2018,6 +2024,7 @@ document.addEventListener('change', e => {
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
   else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
+  else if (id === 'anexo-arq') { const f = e.target.files[0]; if (f) processarAnexo(f); e.target.value = ''; }
   else if (id && id.startsWith('q-')) atualizarHint();
   else if (id && id.startsWith('r-')) atualizarRateio();
   else if (id === 'c-rapida') ligarRapida(e.target.checked);
@@ -2258,6 +2265,52 @@ function atualizarPix() {
   }
   el.innerHTML = h + `<label class="campo"><span>ID da transação (E2E) — opcional, está no comprovante do banco</span><input id="p-e2e" autocomplete="off" maxlength="32" placeholder="E00000000202610141530…" value="${esc(sheetEstado.e2e || '')}"></label>`;
 }
+/* comprovante original do banco: vai direto para o Drive (pasta da dupla); o celular não guarda cópia */
+let anexoPag = null;
+const anexoDe = (dd, pag) => { let u = null; for (const e of dd.eventos) if (e.tipo === 'anexo' && e.alvo === pag && eventoValido(e, Infinity) && (!u || e.ts >= u.ts)) u = e; return u; };
+function b64Arquivo(buf) {
+  const u = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function processarAnexo(file) {
+  const pag = anexoPag; anexoPag = null;
+  if (!file || !pag) return;
+  if (!syncAtiva()) return toast('Ative a sincronização para guardar o comprovante na nuvem.');
+  let tipo, dados;
+  try {
+    if (file.type === 'application/pdf') {
+      if (file.size > 5e6) return toast('PDF muito grande (máximo 5 MB).');
+      tipo = 'application/pdf'; dados = b64Arquivo(await file.arrayBuffer());
+    } else if (/^image\//.test(file.type)) {
+      /* imagem legível: no máximo 1600 px no lado maior, JPEG de boa qualidade */
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = url; });
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(1, 1600 / Math.max(w, h));
+        if (!w || !h) throw new Error('imagem');
+        const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        tipo = 'image/jpeg'; dados = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+      } finally { URL.revokeObjectURL(url); }
+    } else return toast('Escolha uma imagem ou um PDF.');
+    toast('Enviando o comprovante…');
+    await chamar(data.sync, { acao: 'anexo', pag, tipo, dados });
+    addEvento({ tipo: 'anexo', alvo: pag, dados: { tipo, tam: Math.round(dados.length * 3 / 4) } }); /* só depois de o servidor confirmar */
+    toast('Comprovante guardado na nuvem.'); fim(); AC.abrirPagamento({ id: pag });
+  } catch (e) { toast('Não foi possível enviar o comprovante. ' + (msgErro(e) || '')); }
+}
+async function verOriginal(pag) {
+  try {
+    toast('Buscando o comprovante…');
+    const j = await chamar(data.sync, { acao: 'verAnexo', pag });
+    if (!anexoTipoOk(j.tipo) || typeof j.dados !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(j.dados)) throw new Error('dados');
+    if (j.tipo === 'application/pdf') {
+      const b = atob(j.dados), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+      window.open(URL.createObjectURL(new Blob([u], { type: 'application/pdf' })), '_blank');
+    } else abrirSheet(`<h2>🧾 Comprovante do banco</h2><img class="anexo-img" src="data:${j.tipo};base64,${j.dados}" alt="Comprovante do banco"><div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Voltar</button></div>`);
+  } catch (e) { toast(String((e && e.message) || e) === 'sem-anexo' ? 'Este comprovante não está na nuvem.' : 'Não foi possível abrir: ' + msgErro(e)); }
+}
 const quandoExato = ts => new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 /* comprovante interno: tudo o que o Equilibra sabe deste pagamento, com as duas assinaturas */
 function linhasComprovante(p, D) {
@@ -2272,11 +2325,15 @@ function linhasComprovante(p, D) {
   if (e2) l.push(['ID do Pix (E2E)', x.e2e], ['Banco de origem', e2.banco], ['Hora do Pix', e2.hora]);
   l.push(['Pagamento registrado', `${quandoExato(r.ts)} por ${nome(r.autor)}${data.verif && data.verif[r.id] ? ' (assinado ✔)' : ''}`]);
   if (p.st === 'confirmado' && cf && !cf.auto) l.push(['Recebimento confirmado', `${quandoExato(cf.ts)} por ${nome(cf.autor)} ${cf.dados && cf.dados.ass && cf.dados.ass.rapida ? '(sem digital ⚡)' : '(com digital ✔)'}`]);
+  const ax = anexoDe(data, p.id);
+  l.push(['Comprovante do banco', ax ? `📎 ${ax.dados.tipo === 'application/pdf' ? 'PDF' : 'imagem'} · ${Math.max(1, Math.round(ax.dados.tam / 1024))} KB · anexado por ${nome(ax.autor)}` : 'não anexado']);
   l.push(['Situação', p.apagado ? 'Apagado' : p.st === 'confirmado' ? '✅ Pago e confirmado' : p.st === 'recusado' ? '❌ Recusado' : '⏳ Aguardando confirmação de ' + nome(r.autor === 'a' ? 'b' : 'a')]);
   return l;
 }
 function comprovanteHTML(p, D) {
   return `<div class="comprov"><p class="comprov-tit">🧾 Comprovante de pagamento</p>${linhasComprovante(p, D).map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}
+    ${anexoDe(data, p.id) ? `<button class="btn" style="width:100%;margin-top:10px" data-a="verOriginal" data-id="${esc(p.id)}">🧾 Ver o comprovante do banco</button>` : ''}
+    <button class="btn-sec" style="width:100%;margin-top:10px" data-a="anexar" data-id="${esc(p.id)}">📎 ${anexoDe(data, p.id) ? 'Trocar o comprovante do banco' : 'Anexar comprovante do banco (imagem ou PDF)'}</button>
     <button class="btn-sec" style="width:100%;margin-top:10px" data-a="compartilharComprovante" data-id="${esc(p.id)}">📤 Compartilhar</button></div>`;
 }
 
