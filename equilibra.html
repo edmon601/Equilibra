@@ -509,12 +509,16 @@ function eventoValido(e, agora = Date.now()) {
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
     case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000) && opt(d.rapida, x => x === true);
-    case 'anexo': return alvo && anexoTipoOk(d.tipo) && Number.isSafeInteger(d.tam) && d.tam > 0;
+    case 'anexo': return alvo && anexoTipoOk(d.tipo) && Number.isSafeInteger(d.tam) && d.tam > 0 && (d.lido === undefined || lidoOk(d.lido));
     case 'rateio_st': return alvo && Array.isArray(d.l) && d.l.length <= 50 && d.l.every(x => obj(x) && txt(x.s, 5) && opt(x.g, cent) && opt(x.r, y => y === 1));
   }
   return true;
 }
 /* conta entre vários: id, total, pessoas (a 0 é quem pagou) e i = a linha do amigo deste par */
+function lidoOk(l) { /* declarada: usada ao carregar */
+  return !!l && typeof l === 'object' && (l.valor === undefined || (Number.isSafeInteger(l.valor) && l.valor > 0)) &&
+    (l.data === undefined || /^\d{4}-\d{2}-\d{2}$/.test(l.data)) && (l.hora === undefined || /^\d{2}:\d{2}$/.test(l.hora)) && (l.e2e === undefined || e2eOk(l.e2e));
+}
 function anexoTipoOk(t) { return ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].indexOf(t) >= 0; } /* declarada: usada ao carregar */
 function rateioOk(r) {
   return !!r && typeof r === 'object' && typeof r.id === 'string' && /^[\w-]{4,60}$/.test(r.id) && Number.isSafeInteger(r.total) && r.total > 0 &&
@@ -1847,6 +1851,12 @@ const AC = {
   formRateio() { abrirSheet(formRateio()); },
   anexar(d) { anexoPag = d.id; $(d.tipo === 'pdf' ? '#anexo-arq' : '#anexo-img').click(); }, /* só imagem: o Android abre a galeria */
   verOriginal(d) { verOriginal(d.id); },
+  anexarCompartilhado(d) {
+    const c = compartilhado, dd = pares().find(x => idDe(x) === d.par); if (!c || !dd) return;
+    compartilhado = null; fecharSheet();
+    if (dd !== data) { abrirPar(dd); fim(); }
+    anexoPag = d.id; processarAnexo(c.file, c.lido);
+  },
   admin() { abrirSheet(sheetAdmin()); },
   adminListar() { adminListar(); },
   adminSou(d) { adminSou(d.nome); },
@@ -2274,7 +2284,7 @@ function b64Arquivo(buf) {
   for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
   return btoa(s);
 }
-async function processarAnexo(file) {
+async function processarAnexo(file, lido) {
   const pag = anexoPag; anexoPag = null;
   if (!file || !pag) return;
   if (!syncAtiva()) return toast('Ative a sincronização para guardar o comprovante na nuvem.');
@@ -2297,7 +2307,8 @@ async function processarAnexo(file) {
     } else return toast('Escolha uma imagem ou um PDF.');
     toast('Enviando o comprovante…');
     await chamar(data.sync, { acao: 'anexo', pag, tipo, dados });
-    addEvento({ tipo: 'anexo', alvo: pag, dados: { tipo, tam: Math.round(dados.length * 3 / 4) } }); /* só depois de o servidor confirmar */
+    const ev = { tipo, tam: Math.round(dados.length * 3 / 4) }; if (lido && lidoOk(lido)) ev.lido = lido;
+    addEvento({ tipo: 'anexo', alvo: pag, dados: ev }); /* só depois de o servidor confirmar */
     toast('Comprovante guardado na nuvem.'); fim(); AC.abrirPagamento({ id: pag });
   } catch (e) { toast('Não foi possível enviar o comprovante. ' + (msgErro(e) || '')); }
 }
@@ -2311,6 +2322,94 @@ async function verOriginal(pag) {
       window.open(URL.createObjectURL(new Blob([u], { type: 'application/pdf' })), '_blank');
     } else abrirSheet(`<h2>🧾 Comprovante do banco</h2><img class="anexo-img" src="data:${j.tipo};base64,${j.dados}" alt="Comprovante do banco"><div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Voltar</button></div>`);
   } catch (e) { toast(String((e && e.message) || e) === 'sem-anexo' ? 'Este comprovante não está na nuvem.' : 'Não foi possível abrir: ' + msgErro(e)); }
+}
+/* --- comprovante compartilhado pelo app do banco ("Compartilhar" › Equilibra) --- */
+let compartilhado = null;
+function carregarScript(src) {
+  return new Promise((ok, falha) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => falha(new Error('sem internet para ler o comprovante')); document.head.appendChild(s); });
+}
+async function textoDoArquivo(f) {
+  if (f.type === 'application/pdf') {
+    if (!window.pdfjsLib) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise; let t = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) t += (await (await pdf.getPage(i)).getTextContent()).items.map(x => x.str + (x.hasEOL ? '\n' : ' ')).join('') + '\n';
+    return t;
+  }
+  /* imagem: OCR no próprio celular; na primeira vez baixa o português (~4 MB), depois fica guardado */
+  if (!window.Tesseract) await carregarScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  const w = await Tesseract.createWorker('por');
+  try { return (await w.recognize(f)).data.text; } finally { w.terminate(); }
+}
+const MESES = { jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6, jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12 };
+/* valor, data, hora e E2E do texto de um comprovante Pix (qualquer banco) */
+function dadosComprovante(t) {
+  t = String(t || '').replace(/ /g, ' ');
+  const r = {}, pad = n => String(n).padStart(2, '0');
+  /* o E2E pode vir quebrado em linhas: procura sem espaços */
+  const e = /E\d{20}[A-Za-z0-9]{11}/.exec(t.replace(/\s+/g, ''));
+  if (e && e2eOk(e[0])) r.e2e = e[0];
+  const v = /valor[^\d\n]{0,25}(\d{1,3}(?:\.\d{3})*,\d{2})/i.exec(t) || /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/.exec(t);
+  if (v) r.valor = parseValor(v[1]);
+  let dm = /\b(\d{2})\/(\d{2})\/(\d{4})\b/.exec(t), iso = null;
+  if (dm) iso = `${dm[3]}-${dm[2]}-${dm[1]}`;
+  else if ((dm = /\b(\d{1,2})\s+(?:de\s+)?(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?\s+(?:de\s+)?(\d{4})\b/i.exec(t))) iso = `${dm[3]}-${pad(MESES[dm[2].toLowerCase()])}-${pad(dm[1])}`;
+  else if (r.e2e) iso = `${r.e2e.slice(9, 13)}-${r.e2e.slice(13, 15)}-${r.e2e.slice(15, 17)}`; /* hora do E2E é UTC: só a data */
+  if (iso && !isNaN(new Date(iso + 'T12:00:00'))) r.data = iso;
+  const h = /\b([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b/.exec(t);
+  if (h) r.hora = h[1] + ':' + h[2];
+  if (!(r.valor > 0)) delete r.valor;
+  return r;
+}
+/* pagamentos (de todos os amigos) que combinam com o comprovante: mesmo E2E é certeza; senão mesmo valor e data perto */
+function acharPagamentos(lido, texto) {
+  const txt = semAcento(texto).toUpperCase(), l = [];
+  for (const dd of pares()) {
+    for (const p of derivar(dd).pag.values()) {
+      if (p.apagado) continue;
+      let n = 0;
+      if (lido.e2e && p.pix && p.pix.e2e === lido.e2e) n = 10;
+      else if (lido.valor && p.valor === lido.valor && (!lido.data || Math.abs(new Date(p.data) - new Date(lido.data)) <= 2 * DIA_MS_LER)) {
+        n = 5 - (lido.data ? Math.abs(new Date(p.data) - new Date(lido.data)) / DIA_MS_LER : 1);
+        const quem = semAcento(dd.config.nomes[p.para]).toUpperCase().split(' ')[0];
+        if (quem && txt.includes(quem)) n += 2; /* o nome de quem recebeu aparece no comprovante */
+        if (anexoDe(dd, p.id)) n -= 3; /* já tem comprovante: menos provável */
+      }
+      if (n > 0) l.push({ dd, p, n });
+    }
+  }
+  return l.sort((a, b) => b.n - a.n).slice(0, 5);
+}
+const DIA_MS_LER = 864e5;
+async function abrirCompartilhado() {
+  if (!/[?&]compartilhado/.test(location.search)) return;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  let f = null;
+  try { const c = await caches.open('equilibra-compartilhado'), r = await c.match('./compartilhado'); if (r) { f = await r.blob(); await c.delete('./compartilhado'); } } catch (e) {}
+  if (!f || !f.size) return toast('Não recebi o arquivo compartilhado. Tente de novo.');
+  if (!data || !syncAtiva()) return toast('Conecte-se a um amigo (com sincronização) para anexar comprovantes.');
+  if (f.type !== 'application/pdf' && !/^image\//.test(f.type)) return toast('Compartilhe uma imagem ou um PDF do comprovante.');
+  abrirSheet('<h2>🧾 Lendo o comprovante…</h2><p class="explica">Isso pode levar alguns segundos (na primeira vez, um pouco mais).</p>');
+  let texto = '';
+  try { texto = await textoDoArquivo(f); } catch (e) { texto = ''; }
+  const lido = dadosComprovante(texto), achados = acharPagamentos(lido, texto);
+  compartilhado = { file: f, lido };
+  const nm = (dd, p) => dd.config.nomes[p], pf = dd => (dd.config.eu === 'a' ? 'b' : 'a');
+  const info = [lido.valor ? ['Valor', R(lido.valor)] : null, lido.data ? ['Data', dataLonga(lido.data) + (lido.hora ? ' ' + lido.hora : '')] : null,
+    lido.e2e ? ['ID do Pix (E2E)', lido.e2e] : null, lido.e2e ? ['Banco de origem', e2eInfo(lido.e2e).banco] : null].filter(Boolean);
+  const lidos = `<div class="comprov"><p class="comprov-tit">Dados lidos do comprovante</p>${info.length ? info.map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('') : '<p class="explica">Não consegui ler o valor nem o ID do Pix.</p>'}</div>`;
+  if (!achados.length) {
+    compartilhado = null;
+    return abrirSheet(`<h2>🧾 Não encontrei o pagamento</h2>${lidos}<p class="explica">Nenhum pagamento no Equilibra combina com este comprovante. Registre o pagamento em “Acertar contas” e depois anexe o comprovante por ele.</p><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
+  }
+  const certo = achados[0].n >= 10 || achados.length === 1;
+  abrirSheet(`<h2>🧾 ${certo ? 'Pagamento encontrado' : 'Qual é o pagamento?'}</h2>${lidos}
+    ${(certo ? achados.slice(0, 1) : achados).map(({ dd, p }) => {
+      const de = p.de === dd.config.eu ? 'Você' : nm(dd, p.de), para = p.para === dd.config.eu ? 'você' : nm(dd, p.para);
+      return `<div class="comprov"><p><b>${esc(de)} pagou ${esc(para)}</b> · ${R(p.valor)}<br><small>${esc(dataLonga(p.data))} · ${esc(p.forma || 'Pagamento')} · com ${esc(nm(dd, pf(dd)))}${anexoDe(dd, p.id) ? ' · já tem comprovante (será trocado)' : ''}</small></p>
+        <button class="btn" style="width:100%;margin-top:8px" data-a="anexarCompartilhado" data-par="${esc(idDe(dd))}" data-id="${esc(p.id)}">📎 Anexar</button></div>`;
+    }).join('')}
+    <p class="explica">Confira se o valor e a data batem antes de anexar.</p><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button></div>`);
 }
 const quandoExato = ts => new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 /* comprovante interno: tudo o que o Equilibra sabe deste pagamento, com as duas assinaturas */
@@ -2327,6 +2426,8 @@ function linhasComprovante(p, D) {
   l.push(['Pagamento registrado', `${quandoExato(r.ts)} por ${nome(r.autor)}${data.verif && data.verif[r.id] ? ' (assinado ✔)' : ''}`]);
   if (p.st === 'confirmado' && cf && !cf.auto) l.push(['Recebimento confirmado', `${quandoExato(cf.ts)} por ${nome(cf.autor)} ${cf.dados && cf.dados.ass && cf.dados.ass.rapida ? '(sem digital ⚡)' : '(com digital ✔)'}`]);
   const ax = anexoDe(data, p.id);
+  const li = ax && ax.dados.lido;
+  if (li) l.push(['Lido no comprovante', [li.valor ? R(li.valor) : '', li.data ? dataLonga(li.data) + (li.hora ? ' ' + li.hora : '') : '', li.e2e ? 'E2E ' + li.e2e : ''].filter(Boolean).join(' · ') || '—']);
   l.push(['Comprovante do banco', ax ? `📎 ${ax.dados.tipo === 'application/pdf' ? 'PDF' : 'imagem'} · ${Math.max(1, Math.round(ax.dados.tam / 1024))} KB · anexado por ${nome(ax.autor)}` : 'não anexado']);
   l.push(['Situação', p.apagado ? 'Apagado' : p.st === 'confirmado' ? '✅ Pago e confirmado' : p.st === 'recusado' ? '❌ Recusado' : '⏳ Aguardando confirmação de ' + nome(r.autor === 'a' ? 'b' : 'a')]);
   return l;
@@ -3120,6 +3221,7 @@ if (data) gerarRecorrentes();
 render();
 if (data && data.sync) sincronizar(false);
 abrirConviteDaUrl(); /* aberto pelo QR lido com a câmera do celular */
+abrirCompartilhado(); /* aberto pelo "Compartilhar" do app do banco */
 
 window.addEventListener('hashchange', abrirConviteDaUrl);
 window.addEventListener('online', () => { if (data) agendarSync(); });

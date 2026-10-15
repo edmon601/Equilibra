@@ -1,6 +1,7 @@
 /* Equilibra - service worker
    Busca sempre a versão mais nova quando há internet e usa a cópia guardada quando não há. */
-const VERSAO = 'equilibra-v26';
+const VERSAO = 'equilibra-v27';
+const COMPARTILHADO = 'equilibra-compartilhado'; /* arquivo vindo do "Compartilhar" do banco, até o app abrir */
 const ARQUIVOS = ['./equilibra.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -10,13 +11,23 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== VERSAO).map(k => caches.delete(k))))
+      .then(ks => Promise.all(ks.filter(k => k !== VERSAO && k !== COMPARTILHADO).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
   const req = e.request;
+  if (req.method === 'POST' && new URL(req.url).searchParams.has('compartilhar')) {
+    e.respondWith((async () => {
+      try {
+        const f = (await req.formData()).get('arquivo');
+        if (f && f.size) await (await caches.open(COMPARTILHADO)).put('./compartilhado', new Response(f, { headers: { 'content-type': f.type || 'application/octet-stream' } }));
+      } catch (er) {}
+      return Response.redirect(new URL('./equilibra.html?compartilhado=1', self.registration.scope).href, 303);
+    })());
+    return;
+  }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return; /* Google Drive e login passam direto */
