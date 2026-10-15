@@ -288,7 +288,8 @@ img.avatar{object-fit:cover;background:var(--linha)}
 <div id="toast" class="toast" role="status" hidden></div>
 <input type="file" id="arquivo" accept="application/json,.json" hidden>
 <input type="file" id="foto-arq" accept="image/*" hidden>
-<input type="file" id="anexo-arq" accept="image/*,application/pdf" hidden>
+<input type="file" id="anexo-img" accept="image/*" hidden>
+<input type="file" id="anexo-arq" accept="application/pdf" hidden>
 <noscript>O Equilibra precisa de JavaScript para funcionar.</noscript>
 
 <script>
@@ -1844,7 +1845,7 @@ const AC = {
     addEvento({ tipo: 'comentario', alvo: d.id, dados: { texto: t } }); fim();
   },
   formRateio() { abrirSheet(formRateio()); },
-  anexar(d) { anexoPag = d.id; $('#anexo-arq').click(); },
+  anexar(d) { anexoPag = d.id; $(d.tipo === 'pdf' ? '#anexo-arq' : '#anexo-img').click(); }, /* só imagem: o Android abre a galeria */
   verOriginal(d) { verOriginal(d.id); },
   admin() { abrirSheet(sheetAdmin()); },
   adminListar() { adminListar(); },
@@ -2024,7 +2025,7 @@ document.addEventListener('change', e => {
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
   else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
-  else if (id === 'anexo-arq') { const f = e.target.files[0]; if (f) processarAnexo(f); e.target.value = ''; }
+  else if (id === 'anexo-arq' || id === 'anexo-img') { const f = e.target.files[0]; if (f) processarAnexo(f); e.target.value = ''; }
   else if (id && id.startsWith('q-')) atualizarHint();
   else if (id && id.startsWith('r-')) atualizarRateio();
   else if (id === 'c-rapida') ligarRapida(e.target.checked);
@@ -2333,7 +2334,8 @@ function linhasComprovante(p, D) {
 function comprovanteHTML(p, D) {
   return `<div class="comprov"><p class="comprov-tit">🧾 Comprovante de pagamento</p>${linhasComprovante(p, D).map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}
     ${anexoDe(data, p.id) ? `<button class="btn" style="width:100%;margin-top:10px" data-a="verOriginal" data-id="${esc(p.id)}">🧾 Ver o comprovante do banco</button>` : ''}
-    <button class="btn-sec" style="width:100%;margin-top:10px" data-a="anexar" data-id="${esc(p.id)}">📎 ${anexoDe(data, p.id) ? 'Trocar o comprovante do banco' : 'Anexar comprovante do banco (imagem ou PDF)'}</button>
+    <p class="comprov-tit" style="margin:14px 0 6px">📎 ${anexoDe(data, p.id) ? 'Trocar o comprovante do banco' : 'Anexar o comprovante do banco'}</p>
+    <div class="dupla"><button class="btn-sec" data-a="anexar" data-tipo="img" data-id="${esc(p.id)}">🖼️ Imagem da galeria</button><button class="btn-sec" data-a="anexar" data-tipo="pdf" data-id="${esc(p.id)}">📄 Arquivo PDF</button></div>
     <button class="btn-sec" style="width:100%;margin-top:10px" data-a="compartilharComprovante" data-id="${esc(p.id)}">📤 Compartilhar</button></div>`;
 }
 
