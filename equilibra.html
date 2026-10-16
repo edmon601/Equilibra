@@ -2723,37 +2723,59 @@ function publicarRateios() {
    de cada um e o detalhe dos itens na nota. A foto não é guardada.
    ============================================================ */
 const DINHEIRO = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
-/* cupom de supermercado (NFC-e): "01 7898956109679 NECTAR PIONEIRA 5L LA 1 UN 42,99 42,99"
-   = nº, código, descrição, quantidade, unidade, valor unitário, valor total (já com o desconto da linha "Desconto:") */
-/* o fim da linha manda: quantidade, unidade, valor unitário e total. O OCR do celular erra muito no resto
-   (lixo antes do nº e depois do total, código com ] ou /, "1" lido como |, vírgula lida como / ou espaço) */
-const NFCE_FIM = /[\s—\-=,.]+([\d|lI]{1,3}(?:,\d{1,3})?)\s*(UN|KG|G|L|ML|LT|CX|PC|PCT|FD|DZ|M|UND)\.?\s*[xX*]?\s+\d{1,4}[,/.]\d{2,3}\s+(\d{1,4}(?:\.\d{3})?[,/ ]\d{2})(?:\s+\S{1,4}){0,3}\s*$/i;
+/* Cupom fiscal (NFC-e) e página da Sefaz. O fim da linha manda: quantidade, unidade, [x] valor unitário, [tributo] e total.
+   Ex.: "01 7898956109679 NECTAR PIONEIRA 5L LA 1 UN 42,99 42,99" ou, em 2 linhas, "001 0000052067 ESPORT MAS 41" / "1,000 PA X 229,99 54,34 229,99".
+   O OCR do celular erra muito no resto (lixo antes do nº e depois do total, código com ] ou /, "1" lido como |, vírgula lida como / ou espaço) */
+const NFCE_FIM = /(?:^\s*|[\s—\-=,.]+)([\d|lI]{1,3}(?:,\d{1,3})?)\s*(UN|KG|G|L|ML|LT|CX|PC|PCT|PA|PR|FD|DZ|M|UND)\.?\s*[xX*]?\s+(\d{1,4}[,/.]\d{2,3})(?:\s+\d{1,4}[,.]\d{2})?\s+(\d{1,4}(?:\.\d{3})?[,/ ]\d{2})(?:\s+\S{1,4}){0,3}\s*$/i;
 const capitalizar = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-function linhaNFCe(l) {
+const qtdTexto = (q, un) => { const n = parseFloat(String(q).replace(/[|lI]/g, '1').replace(',', '.')) || 1; return String(n).replace('.', ',') + ' ' + un.toLowerCase(); };
+function linhaNFCe(l, ant) {
   if (/desc[oa]nto|total|a pagar|tribut/i.test(l)) return null;
   const m = NFCE_FIM.exec(l); if (!m) return null;
-  let ts = l.slice(0, m.index).split(/\s+/).filter(Boolean), cod = -1;
+  let esq = l.slice(0, m.index);
+  if (!/[A-Za-zÀ-ú]{2}/.test(esq) && ant) esq = ant; /* nome na linha de cima */
+  let ts = esq.split(/\s+/).filter(Boolean), cod = -1;
   ts.forEach((t, k) => { if (/^\D?[\d\])[/|lIO]{6,}\D?$/.test(t) && (t.match(/\d/g) || []).length >= 5) cod = k; }); /* código de barras */
   if (cod >= 0) ts = ts.slice(cod + 1);
   else { const k = ts.findIndex(t => /^[A-ZÀ-Ú][A-ZÀ-Ú0-9]+$/.test(t)); if (k > 0) ts = ts.slice(k); } /* sem código: começa na 1ª palavra em maiúsculas */
   const desc = ts.filter(t => /[A-Za-zÀ-ú0-9]/.test(t)).join(' ');
   if (!/[A-Za-zÀ-ú]{2}/.test(desc)) return null;
-  const v = parseValor(m[3].replace(/[/ ]/, ','));
-  return v > 0 ? { d: capitalizar(desc).slice(0, 40), q: m[1].replace(/[|lI]/g, '1') + ' ' + m[2].toLowerCase(), v, quem: [] } : null;
+  const v = parseValor(m[4].replace(/[/ ]/, ',')), un = parseValor(m[3].replace('/', ',')), n = parseFloat(m[1].replace(/[|lI]/g, '1').replace(',', '.')) || 1;
+  /* bruto: o total ainda não tem o desconto (vem numa linha "Desconto" depois); no Fort o total já vem com ele */
+  return v > 0 ? { d: capitalizar(desc).slice(0, 40), q: qtdTexto(m[1], m[2]), v, bruto: Math.abs(Math.round(un * n) - v) <= 1, quem: [] } : null;
 }
 function itensComanda(t) {
-  const itens = []; let total = null, sub = null, pagar = null;
-  const cupom = /consumidor\s*eletr|nfc-?e|danfe/i.test(t); /* cupom de supermercado: linha fora do formato não vira item (é lixo do OCR) */
+  const itens = []; let total = null, sub = null, pagar = null, descontos = null, ant = '', cur = null, esperaPagar = false;
+  const cupom = /consumidor\s*eletr|nfc-?e|danfe|\(c[óo]d/i.test(t); /* cupom fiscal: linha fora do formato não vira item (é lixo do OCR) */
   for (let l of String(t || '').replace(/ /g, ' ').split('\n')) {
-    const nf = linhaNFCe(l);
-    if (nf) { itens.push(nf); continue; }
-    const vs = l.match(DINHEIRO); if (!vs) continue;
+    const anterior = ant; ant = /[A-Za-zÀ-ú]{2}/.test(l) && !DINHEIRO.test(l) ? l : ''; DINHEIRO.lastIndex = 0;
+    const nf = linhaNFCe(l, anterior);
+    if (nf) { itens.push(nf); cur = null; continue; }
+    /* página da Sefaz: "NOME (Código: 123" / "…) 229,99" / "Qtde.:1 UN:PA Vl. Unit.: 229,99" */
+    const sz = /^(.*?[A-Za-zÀ-ú].*?)\s*\(C[óo]d/i.exec(l);
+    if (sz) { cur = { d: capitalizar(sz[1].replace(/\s+/g, ' ').trim()).slice(0, 40), v: 0, bruto: true, quem: [] }; itens.push(cur); const r = l.slice(sz[0].length).match(DINHEIRO); if (r) cur.v = parseValor(r[r.length - 1]); continue; }
+    const vs = l.match(DINHEIRO);
+    if (cur && /qtde/i.test(l)) {
+      const q = /qtde\.?\s*:?\s*([\d.,|lI]+)/i.exec(l), u = /\bUN\s*:\s*([A-Za-z]{1,3})/i.exec(l);
+      cur.q = qtdTexto(q ? q[1] : '1', u ? u[1] : 'un');
+      if (!cur.v && vs) cur.v = Math.round(parseValor(vs[vs.length - 1]) * (parseFloat((q ? q[1] : '1').replace(',', '.')) || 1));
+      cur = null; continue;
+    }
+    if (!vs) { if (/a\s*pagar/i.test(l)) esperaPagar = true; continue; }
     const v = parseValor(vs[vs.length - 1]); /* o último valor da linha é o total do item */
-    if (/desc[oa]nto|tribut|lei\s*12/i.test(l)) continue;
+    if (cur && !cur.v) { cur.v = v; continue; }
+    if (esperaPagar) { pagar = v; esperaPagar = false; continue; }
+    if (/descontos/i.test(l)) { descontos = v; continue; }
+    if (/desc[oa]nto/i.test(l)) { /* desconto do item de cima, quando o total dele ainda não tem o desconto */
+      const u = itens[itens.length - 1];
+      if (u && u.bruto && v > 0 && v < u.v) { u.v -= v; u.ds = (u.ds || 0) + v; u.bruto = false; }
+      continue;
+    }
+    if (/tribut|lei\s*12/i.test(l)) continue;
     if (/sub\s*-?\s*total/i.test(l)) { sub = v; continue; }
     if (/a\s*pagar/i.test(l)) { pagar = v; continue; }
     if (/total/i.test(l)) { total = v; continue; }
-    if (/troco|pago|dinheiro|cart[aã]o|cr[eé]dito|d[eé]bito|\bpix\b|desconto|taxa|servi[cç]o|gorjeta|%|cpf|cnpj/i.test(l)) continue;
+    if (/troco|pago|dinheiro|cart[aã]o|cr[eé]dito|d[eé]bito|\bpix\b|taxa|servi[cç]o|gorjeta|%|cpf|cnpj/i.test(l)) continue;
     if (cupom) continue;
     let desc = l.replace(DINHEIRO, ' ').replace(/R\$/g, ' '), q = 1;
     const m = /^\s*(?:\d{3,}\s+)?(\d{1,2})\s*(?:x|un|und|unid)?\.?\s+(?=[A-Za-zÀ-ú])/i.exec(desc); /* código e quantidade no começo */
@@ -2762,7 +2784,15 @@ function itensComanda(t) {
     if (!/[A-Za-zÀ-ú]{2}/.test(desc) || !(v > 0)) continue;
     itens.push({ d: (q > 1 ? capitalizar(desc) + ' ×' + q : capitalizar(desc)).slice(0, 40), v, quem: [] });
   }
-  return { itens, total: sub || pagar || total };
+  const lista = itens.filter(it => it.v > 0);
+  lista.forEach(it => delete it.bruto);
+  /* desconto só no fim da nota (soma dos itens = valor total; total − descontos = a pagar): reparte proporcional ao valor de cada item */
+  const soma = lista.reduce((s, it) => s + it.v, 0), D = pagar ? soma - pagar : 0;
+  if (D > 0 && (descontos ? Math.abs(D - descontos) <= 1 : total && Math.abs(soma - total) <= 1)) {
+    let resto = D;
+    lista.forEach((it, i) => { const x = i === lista.length - 1 ? resto : Math.round(D * it.v / soma); it.v -= x; it.ds = (it.ds || 0) + x; resto -= x; });
+  }
+  return { itens: lista, total: sub || pagar || total };
 }
 const genteComanda = () => [{ k: 'eu', n: 'Você' }, ...pares().map(dd => ({ k: idDe(dd), n: dd.config.nomes[outroDe(dd)], dd }))];
 function contaComanda(c) {
@@ -2777,7 +2807,7 @@ function contaComanda(c) {
 }
 function itensComandaHTML() {
   const c = sheetEstado.comanda, g = genteComanda();
-  return c.itens.map((it, i) => `<div class="k-item">${it.q ? `<small class="k-q">Qt ${esc(it.q)}</small>` : ''}<div class="k-lin"><input id="k-d-${i}" maxlength="40" value="${esc(it.d)}" placeholder="Item" aria-label="Item">
+  return c.itens.map((it, i) => `<div class="k-item">${it.q || it.ds ? `<small class="k-q">${it.q ? 'Qt ' + esc(it.q) : ''}${it.ds ? ' · desconto ' + R(it.ds) : ''}</small>` : ''}<div class="k-lin"><input id="k-d-${i}" maxlength="40" value="${esc(it.d)}" placeholder="Item" aria-label="Item">
       <span class="moeda"><b>R$</b><input id="k-v-${i}" inputmode="decimal" placeholder="0,00" value="${it.v > 0 ? fmtIn(it.v) : ''}" aria-label="Valor"></span>
       <button class="btn-txt" data-a="kTirar" data-i="${i}" aria-label="Remover item">✕</button></div>
     <div>${g.map(p => `<button class="pchip${it.quem.includes(p.k) ? ' on' : ''}" data-a="kQuem" data-i="${i}" data-k="${esc(p.k)}" aria-pressed="${it.quem.includes(p.k)}">${esc(p.n)}</button>`).join('')}<button class="pchip" data-a="kTodos" data-i="${i}">Todos</button></div></div>`).join('')
