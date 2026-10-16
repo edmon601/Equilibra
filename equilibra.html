@@ -148,6 +148,10 @@ button{cursor:pointer;border:0;background:none;text-align:inherit}
 .chk input{width:22px;height:22px;accent-color:var(--verde)}
 .dica{font-size:14px;color:var(--suave);margin:-4px 0 14px;min-height:20px}
 .erro{background:var(--deve-bg);color:var(--erro-tx);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.difs{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 10px}.difs th,.difs td{padding:6px 4px;border-bottom:1px solid var(--linha);text-align:left;vertical-align:top;word-break:break-all}
+.k-item{border-bottom:1px solid var(--linha);padding:8px 0}.k-lin{display:flex;gap:6px;align-items:center}.k-lin>input{flex:1;min-width:0}.k-lin .moeda{width:110px;flex:none}
+.pchip{border:1.5px solid var(--linha);border-radius:99px;padding:5px 11px;margin:6px 6px 0 0;font-size:13px;font-weight:600;background:var(--papel);min-height:32px}
+.pchip.on{border-color:var(--verde);background:var(--verde-claro);color:var(--verde-esc)}
 .opcao{display:flex;width:100%;align-items:center;gap:12px;padding:14px 4px;border-bottom:1px solid var(--linha);font-weight:600;min-height:52px}
 .barra{margin:0 0 12px}
 .barra div{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:4px}
@@ -290,6 +294,7 @@ img.avatar{object-fit:cover;background:var(--linha)}
 <input type="file" id="foto-arq" accept="image/*" hidden>
 <input type="file" id="anexo-img" accept="image/*" hidden>
 <input type="file" id="anexo-arq" accept="application/pdf" hidden>
+<input type="file" id="comanda-img" accept="image/*" hidden>
 <noscript>O Equilibra precisa de JavaScript para funcionar.</noscript>
 
 <script>
@@ -509,7 +514,8 @@ function eventoValido(e, agora = Date.now()) {
     case 'recusa': return txt(d.rev, 120);
     case 'comentario': return alvo && txt(d.texto, 2000);
     case 'chave': return txt(d.cid, 1000) && txt(d.pub, 1000) && opt(d.rapida, x => x === true);
-    case 'anexo': return alvo && anexoTipoOk(d.tipo) && Number.isSafeInteger(d.tam) && d.tam > 0 && (d.lido === undefined || lidoOk(d.lido));
+    case 'anexo': return alvo && anexoTipoOk(d.tipo) && Number.isSafeInteger(d.tam) && d.tam > 0 && (d.lido === undefined || lidoOk(d.lido)) && (d.parte === undefined || d.parte === 2);
+    case 'anexo_ok': return alvo && (d.lido === undefined || lidoOk(d.lido));
     case 'rateio_st': return alvo && Array.isArray(d.l) && d.l.length <= 50 && d.l.every(x => obj(x) && txt(x.s, 5) && opt(x.g, cent) && opt(x.r, y => y === 1));
   }
   return true;
@@ -1519,6 +1525,7 @@ function formDespesa(d, gid) {
   return `<h2>${novo ? 'Nova despesa' : 'Editar despesa'}</h2>
   <div class="erro" id="erro" role="alert" hidden></div>
   ${novo && amigos.ids.length > 1 ? '<button class="btn-sec" style="width:100%;margin-bottom:14px" data-a="formRateio">👥 Dividir com vários amigos</button>' : ''}
+  ${novo ? '<button class="btn-sec" style="width:100%;margin-bottom:14px" data-a="lerComanda">📷 Ler a comanda (dividir por item)</button>' : ''}
   <div id="nf-area">${nfFormHTML()}</div>
   <label class="campo"><span>Grupo</span><select id="f-grupo">${gs.map(g => `<option value="${esc(g.id)}" ${g.id === v.grupo ? 'selected' : ''}>${esc(iconeTxt(g.icone) + ' ' + g.nome)}</option>`).join('')}</select></label>
   <label class="campo"><span>Descrição</span><input id="f-desc" maxlength="60" value="${esc(v.desc)}"></label>
@@ -1850,7 +1857,8 @@ const AC = {
   },
   formRateio() { abrirSheet(formRateio()); },
   anexar(d) { anexoPag = d.id; $(d.tipo === 'pdf' ? '#anexo-arq' : '#anexo-img').click(); }, /* só imagem: o Android abre a galeria */
-  verOriginal(d) { verOriginal(d.id); },
+  verOriginal(d) { verOriginal(d.id, d.parte === '2' ? 2 : undefined); },
+  enviarAnexo(d) { enviarAnexo(d.parte === '2' ? 2 : 1); },
   anexarCompartilhado(d) {
     const c = compartilhado, dd = pares().find(x => idDe(x) === d.par); if (!c || !dd) return;
     compartilhado = null; fecharSheet();
@@ -1888,6 +1896,11 @@ const AC = {
   ligarPush() { ligarPush(true); },
   desligarPush() { ligarPush(false); },
   salvarRateio() { salvarRateio(); },
+  lerComanda() { $('#comanda-img').click(); },
+  kQuem(d) { const it = sheetEstado && sheetEstado.comanda && sheetEstado.comanda.itens[+d.i]; if (!it) return; it.quem = it.quem.includes(d.k) ? it.quem.filter(k => k !== d.k) : [...it.quem, d.k]; redesenharComanda(); },
+  kTodos(d) { const it = sheetEstado && sheetEstado.comanda && sheetEstado.comanda.itens[+d.i]; if (!it) return; const t = genteComanda().map(p => p.k); it.quem = it.quem.length === t.length ? [] : t; redesenharComanda(); },
+  kTirar(d) { if (!sheetEstado || !sheetEstado.comanda) return; sheetEstado.comanda.itens.splice(+d.i, 1); redesenharComanda(); },
+  kMais() { if (!sheetEstado || !sheetEstado.comanda) return; sheetEstado.comanda.itens.push({ d: '', v: 0, quem: [] }); redesenharComanda(); const u = $('#k-d-' + (sheetEstado.comanda.itens.length - 1)); if (u) u.focus(); },
   qrRateio(d) { qrRateio(d.id); },
   pagarDespesa(d) {
     const D = derivar(), x = D.desp.get(d.id), sd = saldoDespesa(D, x); if (!sd || sd.falta <= 0) return;
@@ -1919,7 +1932,7 @@ const AC = {
   },
   abrirPagamento(d) {
     const D = derivar(), p = D.pag.get(d.id); if (!p || p.apagado) return;
-    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${blocoStatus(p, D)}${comprovanteHTML(p, D)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
+    abrirSheet(`<h2>${esc(textoPag(p))}</h2><p class="meta" style="color:var(--suave)">${R(p.valor)} · ${esc(p.forma || '')} · ${esc(dataLonga(p.data))}</p>${p.st === 'pendente' && p.para === EU() ? '<p class="dica">💡 Confirme só depois de ver o valor no seu banco.</p>' : ''}${blocoStatus(p, D)}${comprovanteHTML(p, D)}${histHTML(D, p)}<div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button>${p.exclusaoPendente ? '' : `<button class="btn-txt" data-a="apagarPagamento" data-id="${esc(d.id)}">${retiravel(p) ? 'Retirar' : 'Apagar'}</button>`}</div>`);
   },
   apagarPagamento(d) {
     const p = derivar().pag.get(d.id); if (!p) return;
@@ -2035,6 +2048,7 @@ document.addEventListener('change', e => {
   else if (id === 'c-eu') { data.config.eu = e.target.value; store.save(data); render(); }
   else if (id === 'arquivo') { const f = e.target.files[0]; if (f) importarArquivo(f); e.target.value = ''; }
   else if (id === 'foto-arq') { const f = e.target.files[0]; if (f) processarFoto(f); e.target.value = ''; }
+  else if (id === 'comanda-img') { const f = e.target.files[0]; if (f) lerComandaFoto(f); e.target.value = ''; }
   else if (id === 'anexo-arq' || id === 'anexo-img') { const f = e.target.files[0]; if (f) processarAnexo(f); e.target.value = ''; }
   else if (id && id.startsWith('q-')) atualizarHint();
   else if (id && id.startsWith('r-')) atualizarRateio();
@@ -2051,6 +2065,11 @@ document.addEventListener('input', e => {
   else if (e.target.id === 'p-valor') atualizarPix();
   else if (e.target.id === 'p-e2e' && sheetEstado) sheetEstado.e2e = e.target.value;
   else if (sheetEstado && sheetEstado.rateio === true) atualizarRateio();
+  else if (sheetEstado && sheetEstado.comanda && /^k-[dv]-\d+$/.test(e.target.id)) {
+    const [, k, i] = e.target.id.split('-'), it = sheetEstado.comanda.itens[+i];
+    if (it) { if (k === 'd') it.d = e.target.value; else it.v = parseValor(e.target.value) || 0; }
+    $('#k-resumo').innerHTML = resumoComanda();
+  }
   else if (sheetEstado && $('#hint') && e.target.closest('#sheet')) atualizarHint();
 });
 document.addEventListener('keydown', e => {
@@ -2278,49 +2297,160 @@ function atualizarPix() {
 }
 /* comprovante original do banco: vai direto para o Drive (pasta da dupla); o celular não guarda cópia */
 let anexoPag = null;
-const anexoDe = (dd, pag) => { let u = null; for (const e of dd.eventos) if (e.tipo === 'anexo' && e.alvo === pag && eventoValido(e, Infinity) && (!u || e.ts >= u.ts)) u = e; return u; };
+const anexoDe = (dd, pag) => anexosDe(dd, pag).main;
 function b64Arquivo(buf) {
   const u = new Uint8Array(buf); let s = '';
   for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
   return btoa(s);
 }
+/* --- análise do comprovante: a data impressa confere com o ID do Pix? já foi usado em outro pagamento?
+   confere com o que já está anexado? (o ID do Pix leva a data e hora reais, geradas pelo banco) --- */
+const pad2 = n => String(n).padStart(2, '0');
+function horaE2E(e2e) { /* hora de Brasília, guardada como se fosse UTC */
+  const t = e2e.slice(9, 21);
+  return new Date(Date.UTC(+t.slice(0, 4), +t.slice(4, 6) - 1, +t.slice(6, 8), +t.slice(8, 10), +t.slice(10, 12)) - 3 * 36e5);
+}
+const textoHora = x => `${pad2(x.getUTCDate())}/${pad2(x.getUTCMonth() + 1)}/${x.getUTCFullYear()} ${pad2(x.getUTCHours())}:${pad2(x.getUTCMinutes())}`;
+/* devolve a data real (do ID do Pix) quando a data impressa não confere com ela */
+function dataNaoConfere(l) {
+  if (!l || !l.e2e || !l.data || !e2eOk(l.e2e)) return null;
+  const real = horaE2E(l.e2e), imp = new Date(l.data + 'T' + (l.hora || '12:00') + ':00Z');
+  const tol = l.hora ? 130 * 6e4 : 14 * 36e5; /* Acre e Amazonas: até 2 h antes de Brasília */
+  return Math.abs(imp - real) > tol ? textoHora(real) : null;
+}
+/* o mesmo ID do Pix já está em outro pagamento (de qualquer amigo)? */
+function e2eUsado(e2e, pag) {
+  if (!e2e) return null;
+  for (const dd of pares()) {
+    const usados = new Set(dd.eventos.filter(e => e.tipo === 'anexo' && e.alvo !== pag && e.dados && e.dados.lido && e.dados.lido.e2e === e2e).map(e => e.alvo));
+    for (const p of derivar(dd).pag.values()) if (p.id !== pag && !p.apagado && (usados.has(p.id) || (p.pix && p.pix.e2e === e2e))) return p;
+  }
+  return null;
+}
+function avisosLido(l, pag) {
+  const a = [], real = dataNaoConfere(l), p = pag && derivar().pag.get(pag), u = pag && e2eUsado(l.e2e, pag);
+  if (real) a.push(`A data do comprovante (${dataLonga(l.data)}${l.hora ? ' ' + l.hora : ''}) não confere com o ID do Pix, que indica ${real}. Confira se é o comprovante certo.`);
+  if (u) a.push(`Este comprovante já foi usado no pagamento de ${dataLonga(u.data)} (${R(u.valor)}).`);
+  if (p && p.pix && p.pix.e2e && l.e2e && p.pix.e2e !== l.e2e) a.push('O ID do Pix deste comprovante é diferente do registrado no pagamento.');
+  return a;
+}
+const htmlAvisos = a => a.map(t => `<p class="estado falta">⚠️ ${esc(t)}</p>`).join('');
+const minutos = h => +h.slice(0, 2) * 60 + +h.slice(3);
+function diferencas(a, b) {
+  const l = [];
+  if (a.valor && b.valor && a.valor !== b.valor) l.push('valor');
+  if (a.data && b.data && a.data !== b.data) l.push('data');
+  else if (a.hora && b.hora && Math.abs(minutos(a.hora) - minutos(b.hora)) > 2) l.push('data');
+  if (a.e2e && b.e2e && a.e2e !== b.e2e) l.push('e2e');
+  return l;
+}
+const comparavel = (a, b) => !!((a.e2e && b.e2e) || (a.valor && b.valor && a.data && b.data));
+/* quem tem razão, quando dá para saber pelo ID do Pix */
+function veredito(a, b, quemA) {
+  const ra = dataNaoConfere(a), rb = dataNaoConfere(b);
+  if (a.e2e && a.e2e === b.e2e && a.data !== b.data) {
+    const real = textoHora(horaE2E(a.e2e)).slice(0, 10);
+    const certo = [a, b].find(x => x.data && dataLonga(x.data) === real);
+    return `O ID do Pix é o mesmo nos dois e indica ${real}.` + (certo ? ` A data ${dataLonga((certo === a ? b : a).data)} do ${certo === a ? 'seu comprovante' : 'comprovante de ' + quemA} foi alterada.` : '');
+  }
+  if (ra && !rb) return `No comprovante de ${quemA}, a data não confere com o próprio ID do Pix (que indica ${ra}): ele pode ter sido alterado.`;
+  if (rb && !ra) return `No seu comprovante, a data não confere com o próprio ID do Pix (que indica ${rb}).`;
+  if (a.e2e && b.e2e && a.e2e !== b.e2e) return 'Os IDs do Pix são diferentes: são duas transferências diferentes.';
+  return '';
+}
+const linhaLido = l => [l.valor ? R(l.valor) : '', l.data ? dataLonga(l.data) + (l.hora ? ' ' + l.hora : '') : '', l.e2e || ''];
+/* comprovantes de um pagamento: o principal, a contestação (de quem discordou) e quem conferiu */
+function anexosDe(dd, pag) {
+  let main = null, cont = null;
+  for (const e of dd.eventos) {
+    if (e.tipo !== 'anexo' || e.alvo !== pag || !eventoValido(e, Infinity)) continue;
+    if (e.dados.parte === 2) { if (!cont || e.ts >= cont.ts) cont = e; } else if (!main || e.ts >= main.ts) main = e;
+  }
+  if (cont && main && main.ts > cont.ts) cont = null; /* comprovante trocado depois da contestação */
+  const conf = new Set();
+  if (main) for (const e of dd.eventos) if (e.tipo === 'anexo_ok' && e.alvo === pag && e.ts >= main.ts && e.autor !== main.autor && eventoValido(e, Infinity)) conf.add(e.autor);
+  return { main, cont, conf: conf.size ? [main.autor, ...conf] : null };
+}
+async function baixarAnexo(pag, parte) {
+  const j = await chamar(data.sync, { acao: 'verAnexo', pag, parte });
+  if (!anexoTipoOk(j.tipo) || typeof j.dados !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(j.dados)) throw new Error('dados');
+  const b = atob(j.dados), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return new Blob([u], { type: j.tipo });
+}
+async function lerArquivo(f) { try { return dadosComprovante(await textoDoArquivo(f)); } catch (e) { return {}; } }
+let anexoPend = null;
 async function processarAnexo(file, lido) {
   const pag = anexoPag; anexoPag = null;
   if (!file || !pag) return;
   if (!syncAtiva()) return toast('Ative a sincronização para guardar o comprovante na nuvem.');
+  if (file.type !== 'application/pdf' && !/^image\//.test(file.type)) return toast('Escolha uma imagem ou um PDF.');
+  if (file.type === 'application/pdf' && file.size > 5e6) return toast('PDF muito grande (máximo 5 MB).');
+  if (!lido) { toast('Lendo o comprovante…'); lido = await lerArquivo(file); }
+  anexoPend = { file, lido, pag };
+  const avisos = avisosLido(lido, pag), ax = anexosDe(data, pag).main;
+  const botoes = (pr, txt) => `<div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Cancelar</button><button class="btn" data-a="enviarAnexo" data-parte="${pr}">${txt}</button></div>`;
+  if (ax) {
+    let ant = ax.dados.lido;
+    if (!ant) { toast('Lendo o comprovante que já está anexado…'); try { ant = await lerArquivo(await baixarAnexo(pag)); } catch (e) { ant = {}; } }
+    const meu = ax.autor === EU(), quem = meu ? 'você' : nome(ax.autor);
+    if (comparavel(ant, lido) && !diferencas(ant, lido).length) {
+      anexoPend = null;
+      const ja = anexosDe(data, pag).conf;
+      if (!meu && !(ja && ja.includes(EU()))) { addEvento({ tipo: 'anexo_ok', alvo: pag, dados: { lido } }); fim(); }
+      return abrirSheet(`<h2>✅ Este pagamento já tem comprovante</h2>
+        <p class="explica">O comprovante do banco foi enviado por ${esc(quem)} em ${esc(quandoExato(ax.ts).slice(0, 10))}. Ele confere com o seu (${ant.e2e && lido.e2e ? 'mesmo ID do Pix' : 'mesmo valor e data'}), então não é preciso enviar de novo.${meu ? '' : ' Ficou registrado que vocês dois conferiram ✔'}</p>${htmlAvisos(avisos)}
+        <div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Fechar</button><button class="btn" data-a="verOriginal" data-id="${esc(pag)}">🧾 Ver o comprovante do banco</button></div>`);
+    }
+    if (!meu) {
+      /* comprovante de outra pessoa nunca é apagado: o seu fica guardado junto, como contestação */
+      if (!comparavel(ant, lido)) return enviarAnexo(2);
+      const v = veredito(ant, lido, quem), dif = diferencas(ant, lido), [x, y] = [linhaLido(ant), linhaLido(lido)];
+      const lin = (rot, i, k) => `<tr><th>${rot}</th><td>${esc(x[i] || '—')}</td><td>${esc(y[i] || '—')}${dif.includes(k) ? ' ⚠️' : ''}</td></tr>`;
+      return abrirSheet(`<h2>⚠️ Os comprovantes não conferem</h2>
+        <p class="explica">Este pagamento já tem um comprovante enviado por ${esc(quem)}, mas ele é diferente do seu:</p>
+        <table class="difs"><tr><th></th><th>De ${esc(quem)}</th><th>O seu</th></tr>${lin('Valor', 0, 'valor')}${lin('Data', 1, 'data')}${lin('ID do Pix', 2, 'e2e')}</table>
+        ${v ? `<p class="estado falta">${esc(v)}</p>` : ''}${htmlAvisos(avisos)}
+        <p class="explica">O seu comprovante fica guardado junto (sem apagar o de ${esc(quem)}), o pagamento é marcado como “comprovantes divergentes” e ${esc(quem)} é avisado. Confirme o pagamento só depois de ver o valor no seu banco.</p>
+        <button class="btn-txt" data-a="verOriginal" data-id="${esc(pag)}">🧾 Ver o comprovante de ${esc(quem)}</button>
+        ${botoes(2, '📎 Enviar como contestação')}`);
+    }
+  }
+  if (avisos.length) return abrirSheet(`<h2>⚠️ Confira o comprovante</h2>${htmlAvisos(avisos)}${botoes(1, 'Anexar mesmo assim')}`);
+  return enviarAnexo(1);
+}
+async function enviarAnexo(parte) {
+  const c = anexoPend; anexoPend = null; if (!c) return;
+  const { file, lido, pag } = c;
   let tipo, dados;
   try {
-    if (file.type === 'application/pdf') {
-      if (file.size > 5e6) return toast('PDF muito grande (máximo 5 MB).');
-      tipo = 'application/pdf'; dados = b64Arquivo(await file.arrayBuffer());
-    } else if (/^image\//.test(file.type)) {
+    if (file.type === 'application/pdf') { tipo = 'application/pdf'; dados = b64Arquivo(await file.arrayBuffer()); }
+    else {
       /* imagem legível: no máximo 1600 px no lado maior, JPEG de boa qualidade */
       const url = URL.createObjectURL(file);
       try {
         const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = url; });
         const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(1, 1600 / Math.max(w, h));
         if (!w || !h) throw new Error('imagem');
-        const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
-        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
-        tipo = 'image/jpeg'; dados = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+        const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+        const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+        tipo = 'image/jpeg'; dados = cv.toDataURL('image/jpeg', 0.85).split(',')[1];
       } finally { URL.revokeObjectURL(url); }
-    } else return toast('Escolha uma imagem ou um PDF.');
+    }
     toast('Enviando o comprovante…');
-    await chamar(data.sync, { acao: 'anexo', pag, tipo, dados });
-    const ev = { tipo, tam: Math.round(dados.length * 3 / 4) }; if (lido && lidoOk(lido)) ev.lido = lido;
+    await chamar(data.sync, { acao: 'anexo', pag, tipo, dados, parte });
+    const ev = { tipo, tam: Math.round(dados.length * 3 / 4) };
+    if (lido && lidoOk(lido) && Object.keys(lido).length) ev.lido = lido;
+    if (parte === 2) ev.parte = 2;
     addEvento({ tipo: 'anexo', alvo: pag, dados: ev }); /* só depois de o servidor confirmar */
-    toast('Comprovante guardado na nuvem.'); fim(); AC.abrirPagamento({ id: pag });
+    toast(parte === 2 ? 'Seu comprovante foi guardado junto. A outra pessoa será avisada.' : 'Comprovante guardado na nuvem.'); fim(); AC.abrirPagamento({ id: pag });
   } catch (e) { toast('Não foi possível enviar o comprovante. ' + (msgErro(e) || '')); }
 }
-async function verOriginal(pag) {
+async function verOriginal(pag, parte) {
   try {
     toast('Buscando o comprovante…');
-    const j = await chamar(data.sync, { acao: 'verAnexo', pag });
-    if (!anexoTipoOk(j.tipo) || typeof j.dados !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(j.dados)) throw new Error('dados');
-    if (j.tipo === 'application/pdf') {
-      const b = atob(j.dados), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
-      window.open(URL.createObjectURL(new Blob([u], { type: 'application/pdf' })), '_blank');
-    } else abrirSheet(`<h2>🧾 Comprovante do banco</h2><img class="anexo-img" src="data:${j.tipo};base64,${j.dados}" alt="Comprovante do banco"><div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Voltar</button></div>`);
+    const b = await baixarAnexo(pag, parte);
+    if (b.type === 'application/pdf') window.open(URL.createObjectURL(b), '_blank');
+    else abrirSheet(`<h2>🧾 Comprovante do banco</h2><img class="anexo-img" src="${URL.createObjectURL(b)}" alt="Comprovante do banco"><div class="acoes"><button class="btn-sec" data-a="abrirPagamento" data-id="${esc(pag)}">Voltar</button></div>`);
   } catch (e) { toast(String((e && e.message) || e) === 'sem-anexo' ? 'Este comprovante não está na nuvem.' : 'Não foi possível abrir: ' + msgErro(e)); }
 }
 /* --- comprovante compartilhado pelo app do banco ("Compartilhar" › Equilibra) --- */
@@ -2397,7 +2527,7 @@ async function abrirCompartilhado() {
   const nm = (dd, p) => dd.config.nomes[p], pf = dd => (dd.config.eu === 'a' ? 'b' : 'a');
   const info = [lido.valor ? ['Valor', R(lido.valor)] : null, lido.data ? ['Data', dataLonga(lido.data) + (lido.hora ? ' ' + lido.hora : '')] : null,
     lido.e2e ? ['ID do Pix (E2E)', lido.e2e] : null, lido.e2e ? ['Banco de origem', e2eInfo(lido.e2e).banco] : null].filter(Boolean);
-  const lidos = `<div class="comprov"><p class="comprov-tit">Dados lidos do comprovante</p>${info.length ? info.map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('') : '<p class="explica">Não consegui ler o valor nem o ID do Pix.</p>'}</div>`;
+  const lidos = `<div class="comprov"><p class="comprov-tit">Dados lidos do comprovante</p>${info.length ? info.map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('') : '<p class="explica">Não consegui ler o valor nem o ID do Pix.</p>'}</div>${htmlAvisos(avisosLido(lido, null))}`;
   if (!achados.length) {
     compartilhado = null;
     return abrirSheet(`<h2>🧾 Não encontrei o pagamento</h2>${lidos}<p class="explica">Nenhum pagamento no Equilibra combina com este comprovante. Registre o pagamento em “Acertar contas” e depois anexe o comprovante por ele.</p><div class="acoes"><button class="btn-sec" data-a="fecharSheet">Fechar</button></div>`);
@@ -2425,9 +2555,15 @@ function linhasComprovante(p, D) {
   if (e2) l.push(['ID do Pix (E2E)', x.e2e], ['Banco de origem', e2.banco], ['Hora do Pix', e2.hora]);
   l.push(['Pagamento registrado', `${quandoExato(r.ts)} por ${nome(r.autor)}${data.verif && data.verif[r.id] ? ' (assinado ✔)' : ''}`]);
   if (p.st === 'confirmado' && cf && !cf.auto) l.push(['Recebimento confirmado', `${quandoExato(cf.ts)} por ${nome(cf.autor)} ${cf.dados && cf.dados.ass && cf.dados.ass.rapida ? '(sem digital ⚡)' : '(com digital ✔)'}`]);
-  const ax = anexoDe(data, p.id);
+  const an = anexosDe(data, p.id), ax = an.main;
   const li = ax && ax.dados.lido;
   if (li) l.push(['Lido no comprovante', [li.valor ? R(li.valor) : '', li.data ? dataLonga(li.data) + (li.hora ? ' ' + li.hora : '') : '', li.e2e ? 'E2E ' + li.e2e : ''].filter(Boolean).join(' · ') || '—']);
+  if (li) avisosLido(li, p.id).forEach(t => l.push(['⚠️ Atenção', t]));
+  if (an.conf) l.push(['Conferido', '✔ por ' + an.conf.map(nome).join(' e ') + ' (os dois comprovantes batem)']);
+  if (an.cont) {
+    const lc = an.cont.dados.lido || {}, dif = li ? diferencas(li, lc) : [], v = li ? veredito(li, lc, nome(ax.autor)) : '';
+    l.push(['⚠️ Comprovantes divergentes', `${nome(an.cont.autor)} enviou outro comprovante` + (dif.length ? ` (${dif.map(k => ({ valor: 'valor', data: 'data', e2e: 'ID do Pix' })[k]).join(', ')} diferente)` : '') + ': ' + linhaLido(lc).filter(Boolean).join(' · ') + (v ? '. ' + v.replace('do seu comprovante', 'do comprovante de ' + nome(an.cont.autor)).replace('No seu comprovante', 'No comprovante de ' + nome(an.cont.autor)) : '')]);
+  }
   l.push(['Comprovante do banco', ax ? `📎 ${ax.dados.tipo === 'application/pdf' ? 'PDF' : 'imagem'} · ${Math.max(1, Math.round(ax.dados.tam / 1024))} KB · anexado por ${nome(ax.autor)}` : 'não anexado']);
   l.push(['Situação', p.apagado ? 'Apagado' : p.st === 'confirmado' ? '✅ Pago e confirmado' : p.st === 'recusado' ? '❌ Recusado' : '⏳ Aguardando confirmação de ' + nome(r.autor === 'a' ? 'b' : 'a')]);
   return l;
@@ -2435,6 +2571,7 @@ function linhasComprovante(p, D) {
 function comprovanteHTML(p, D) {
   return `<div class="comprov"><p class="comprov-tit">🧾 Comprovante de pagamento</p>${linhasComprovante(p, D).map(([k, v]) => `<div class="comprov-l"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}
     ${anexoDe(data, p.id) ? `<button class="btn" style="width:100%;margin-top:10px" data-a="verOriginal" data-id="${esc(p.id)}">🧾 Ver o comprovante do banco</button>` : ''}
+    ${(c => c ? `<button class="btn-sec" style="width:100%;margin-top:10px" data-a="verOriginal" data-parte="2" data-id="${esc(p.id)}">⚠️ Ver o comprovante de ${esc(nome(c.autor))}</button>` : '')(anexosDe(data, p.id).cont)}
     <p class="comprov-tit" style="margin:14px 0 6px">📎 ${anexoDe(data, p.id) ? 'Trocar o comprovante do banco' : 'Anexar o comprovante do banco'}</p>
     <div class="dupla"><button class="btn-sec" data-a="anexar" data-tipo="img" data-id="${esc(p.id)}">🖼️ Imagem da galeria</button><button class="btn-sec" data-a="anexar" data-tipo="pdf" data-id="${esc(p.id)}">📄 Arquivo PDF</button></div>
     <button class="btn-sec" style="width:100%;margin-top:10px" data-a="compartilharComprovante" data-id="${esc(p.id)}">📤 Compartilhar</button></div>`;
@@ -2574,6 +2711,93 @@ function publicarRateios() {
   }
   return mudou;
 }
+/* ============================================================
+   COMANDA POR ITEM
+   Foto da comanda → lista de itens (editável) → você marca quem
+   consumiu cada um → vira uma "conta com vários amigos" com a parte
+   de cada um e o detalhe dos itens na nota. A foto não é guardada.
+   ============================================================ */
+const DINHEIRO = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
+function itensComanda(t) {
+  const itens = []; let total = null, sub = null;
+  for (let l of String(t || '').replace(/ /g, ' ').split('\n')) {
+    const vs = l.match(DINHEIRO); if (!vs) continue;
+    const v = parseValor(vs[vs.length - 1]); /* o último valor da linha é o total do item */
+    if (/sub\s*-?\s*total/i.test(l)) { sub = v; continue; }
+    if (/total|a pagar/i.test(l)) { total = v; continue; }
+    if (/troco|pago|dinheiro|cart[aã]o|cr[eé]dito|d[eé]bito|\bpix\b|desconto|taxa|servi[cç]o|gorjeta|%|cpf|cnpj/i.test(l)) continue;
+    let desc = l.replace(DINHEIRO, ' ').replace(/R\$/g, ' '), q = 1;
+    const m = /^\s*(?:\d{3,}\s+)?(\d{1,2})\s*(?:x|un|und|unid)?\.?\s+(?=[A-Za-zÀ-ú])/i.exec(desc); /* código e quantidade no começo */
+    if (m) { q = +m[1] || 1; desc = desc.slice(m[0].length); }
+    desc = desc.replace(/\b(x|un|und|unid)\b\.?/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (!/[A-Za-zÀ-ú]{2}/.test(desc) || !(v > 0)) continue;
+    desc = desc.charAt(0).toUpperCase() + desc.slice(1).toLowerCase();
+    itens.push({ d: (q > 1 ? desc + ' ×' + q : desc).slice(0, 40), v, quem: [] });
+  }
+  return { itens, total: sub || total };
+}
+const genteComanda = () => [{ k: 'eu', n: 'Você' }, ...pares().map(dd => ({ k: idDe(dd), n: dd.config.nomes[outroDe(dd)], dd }))];
+function contaComanda(c) {
+  const g = genteComanda(), soma = {}, linhas = {};
+  g.forEach(p => { soma[p.k] = 0; linhas[p.k] = []; });
+  for (const it of c.itens) {
+    const qs = g.filter(p => it.quem.includes(p.k)); if (!qs.length || !(it.v > 0)) continue;
+    const base = Math.floor(it.v / qs.length), sobra = it.v - base * qs.length; /* centavos que sobram vão para os primeiros */
+    qs.forEach((p, i) => { const v = base + (i < sobra ? 1 : 0); soma[p.k] += v; linhas[p.k].push(`${it.d}${qs.length > 1 ? ' (1/' + qs.length + ')' : ''}: ${R(v)}`); });
+  }
+  return { g, soma, linhas };
+}
+function itensComandaHTML() {
+  const c = sheetEstado.comanda, g = genteComanda();
+  return c.itens.map((it, i) => `<div class="k-item"><div class="k-lin"><input id="k-d-${i}" maxlength="40" value="${esc(it.d)}" placeholder="Item" aria-label="Item">
+      <span class="moeda"><b>R$</b><input id="k-v-${i}" inputmode="decimal" placeholder="0,00" value="${it.v > 0 ? fmtIn(it.v) : ''}" aria-label="Valor"></span>
+      <button class="btn-txt" data-a="kTirar" data-i="${i}" aria-label="Remover item">✕</button></div>
+    <div>${g.map(p => `<button class="pchip${it.quem.includes(p.k) ? ' on' : ''}" data-a="kQuem" data-i="${i}" data-k="${esc(p.k)}" aria-pressed="${it.quem.includes(p.k)}">${esc(p.n)}</button>`).join('')}<button class="pchip" data-a="kTodos" data-i="${i}">Todos</button></div></div>`).join('')
+    + '<button class="btn-sec" style="width:100%;margin:10px 0" data-a="kMais">+ Adicionar item</button>';
+}
+function resumoComanda() {
+  const c = sheetEstado.comanda, { g, soma } = contaComanda(c), total = c.itens.reduce((s, it) => s + (it.v > 0 ? it.v : 0), 0);
+  const quem = g.filter(p => soma[p.k] > 0);
+  return `<div class="comprov">${quem.length ? quem.map(p => `<div class="comprov-l"><span>${esc(p.n)}</span><b>${R(soma[p.k])}</b></div>`).join('') : '<p class="explica">Toque nos nomes embaixo de cada item.</p>'}
+    <div class="comprov-l"><span>Soma dos itens</span><b>${R(total)}</b></div>
+    ${c.total ? `<div class="comprov-l"><span>Total na comanda</span><b>${R(c.total)}</b></div>` + (c.total === total ? '<p class="estado ok">✔ A soma confere com a comanda.</p>'
+      : `<p class="estado falta">⚠️ A soma dos itens está ${R(Math.abs(c.total - total))} ${total < c.total ? 'abaixo' : 'acima'} do total da comanda. Confira se algum item foi lido errado${total < c.total ? ' ou ficou faltando' : ''}.</p>`) : ''}</div>`;
+}
+const redesenharComanda = () => { const a = $('#k-itens'), b = $('#k-resumo'); if (a) a.innerHTML = itensComandaHTML(); if (b) b.innerHTML = resumoComanda(); };
+function formComanda() {
+  return `<h2>🧾 Comanda</h2><div class="erro" id="erro" role="alert" hidden></div>
+  <p class="explica">Confira os itens (a leitura pode errar) e toque em quem consumiu cada um. Um item com várias pessoas é dividido entre elas. A foto não é guardada.</p>
+  <label class="campo"><span>Descrição</span><input id="k-desc" maxlength="60" value="Restaurante"></label>
+  <div class="dupla">
+    <label class="campo"><span>Data</span><input id="k-data" type="date" value="${hoje()}"></label>
+    <label class="campo"><span>Categoria</span><select id="k-cat">${CATS.map(c => `<option value="${c.id}">${c.e} ${esc(c.r)}</option>`).join('')}</select></label>
+  </div>
+  <div id="k-itens">${itensComandaHTML()}</div><div id="k-resumo">${resumoComanda()}</div>
+  <div class="acoes"><button class="btn-sec" data-a="fecharSheet">Cancelar</button><button class="btn" data-a="salvarRateio">Salvar e mostrar QR</button></div>`;
+}
+async function lerComandaFoto(f) {
+  if (!/^image\//.test(f.type)) return toast('Escolha uma foto da comanda.');
+  abrirSheet('<h2>🧾 Lendo a comanda…</h2><p class="explica">Isso pode levar alguns segundos (na primeira vez, um pouco mais).</p>');
+  let t = ''; try { t = await textoDoArquivo(f); } catch (e) {}
+  const { itens, total } = itensComanda(t);
+  if (!itens.length) itens.push({ d: '', v: 0, quem: [] });
+  sheetEstado = { comanda: { itens, total } };
+  abrirSheet(formComanda());
+  if (!itens[0].d) toast('Não consegui ler os itens. Digite à mão.');
+}
+/* mesmo formato de lerRateio(), com a parte de cada amigo vinda dos itens */
+function lerComanda() {
+  const c = sheetEstado.comanda, desc = $('#k-desc').value.trim();
+  if (!desc) return { erro: 'Dê uma descrição à conta.' };
+  if (!c.itens.length) return { erro: 'Adicione pelo menos um item.' };
+  if (c.itens.some(it => !(it.v > 0) || !it.d.trim())) return { erro: 'Confira o nome e o valor de todos os itens.' };
+  const sem = c.itens.find(it => !it.quem.length); if (sem) return { erro: `Escolha quem consumiu: ${sem.d}.` };
+  const { g, soma, linhas } = contaComanda(c), com = g.filter(p => p.dd && soma[p.k] > 0);
+  if (!com.length) return { erro: 'Marque pelo menos um amigo em algum item.' };
+  return { desc, total: c.itens.reduce((s, it) => s + it.v, 0), data: $('#k-data').value || hoje(), cat: $('#k-cat').value, sel: com.map(p => p.dd),
+    pessoas: [{ n: nome(EU()), v: soma.eu }, ...com.map(p => ({ n: p.n, v: soma[p.k] }))],
+    notas: com.map(p => ('Seus itens: ' + linhas[p.k].join(' · ')).slice(0, 2000)) };
+}
 function formRateio() {
   sheetEstado = { rateio: true };
   const ps = pares();
@@ -2610,7 +2834,7 @@ function atualizarRateio() {
 }
 async function salvarRateio() {
   if (bioOcupado) return;
-  const r = lerRateio(); if (r.erro) return erroForm(r.erro);
+  const r = sheetEstado && sheetEstado.comanda ? lerComanda() : lerRateio(); if (r.erro) return erroForm(r.erro);
   const rid = uid(), ts = Date.now();
   bioOcupado = true;
   try { await assinar({ item: rid, id: rid, tipo: 'criar', autor: EU(), dados: { desc: r.desc, total: r.total } }, await garantirChave()); } /* a sua digital autoriza a conta inteira */
@@ -2620,7 +2844,7 @@ async function salvarRateio() {
   r.sel.forEach((dd, k) => {
     const eu = dd.config.eu, o = outroDe(dd), v = r.pessoas[k + 1].v;
     const e = { id: uid(), tipo: 'despesa', autor: eu, ts, dados: { grupo: 'casal', desc: r.desc, valor: v, data: r.data, cat: r.cat, pagouModo: eu,
-      pagou: { [eu]: v, [o]: 0 }, tipo: 'exato', ent: { [eu]: 0, [o]: v }, devido: { [eu]: 0, [o]: v }, rec: null, nota: '', nf: null,
+      pagou: { [eu]: v, [o]: 0 }, tipo: 'exato', ent: { [eu]: 0, [o]: v }, devido: { [eu]: 0, [o]: v }, rec: null, nota: (r.notas && r.notas[k]) || '', nf: null,
       rateio: { id: rid, total: r.total, pessoas: r.pessoas, i: k + 1 } } };
     dd.eventos.push(e); store.save(dd);
     if (!primeira) primeira = { dd, id: e.id };

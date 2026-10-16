@@ -1,6 +1,6 @@
 /* Equilibra - service worker
    Busca sempre a versão mais nova quando há internet e usa a cópia guardada quando não há. */
-const VERSAO = 'equilibra-v27';
+const VERSAO = 'equilibra-v29';
 const COMPARTILHADO = 'equilibra-compartilhado'; /* arquivo vindo do "Compartilhar" do banco, até o app abrir */
 const ARQUIVOS = ['./equilibra.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
