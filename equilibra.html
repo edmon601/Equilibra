@@ -2725,24 +2725,36 @@ function publicarRateios() {
 const DINHEIRO = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
 /* cupom de supermercado (NFC-e): "01 7898956109679 NECTAR PIONEIRA 5L LA 1 UN 42,99 42,99"
    = nº, código, descrição, quantidade, unidade, valor unitário, valor total (já com o desconto da linha "Desconto:") */
-const NFCE = /^\s*(?:\S{1,3}\s+)?(?:[\dOoIl]{6,14}\s+)?(.*?[A-Za-zÀ-ú].*?)\s+(\d+(?:,\d{1,3})?)\s*(UN|KG|G|L|ML|LT|CX|PC|PCT|FD|DZ|M|UND)\.?\s*[xX*]?\s+\d{1,3}(?:\.\d{3})*,\d{2,3}\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/i;
+/* o fim da linha manda: quantidade, unidade, valor unitário e total. O OCR do celular erra muito no resto
+   (lixo antes do nº e depois do total, código com ] ou /, "1" lido como |, vírgula lida como / ou espaço) */
+const NFCE_FIM = /[\s—\-=,.]+([\d|lI]{1,3}(?:,\d{1,3})?)\s*(UN|KG|G|L|ML|LT|CX|PC|PCT|FD|DZ|M|UND)\.?\s*[xX*]?\s+\d{1,4}[,/.]\d{2,3}\s+(\d{1,4}(?:\.\d{3})?[,/ ]\d{2})(?:\s+\S{1,4}){0,3}\s*$/i;
 const capitalizar = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+function linhaNFCe(l) {
+  if (/desc[oa]nto|total|a pagar|tribut/i.test(l)) return null;
+  const m = NFCE_FIM.exec(l); if (!m) return null;
+  let ts = l.slice(0, m.index).split(/\s+/).filter(Boolean), cod = -1;
+  ts.forEach((t, k) => { if (/^\D?[\d\])[/|lIO]{6,}\D?$/.test(t) && (t.match(/\d/g) || []).length >= 5) cod = k; }); /* código de barras */
+  if (cod >= 0) ts = ts.slice(cod + 1);
+  else { const k = ts.findIndex(t => /^[A-ZÀ-Ú][A-ZÀ-Ú0-9]+$/.test(t)); if (k > 0) ts = ts.slice(k); } /* sem código: começa na 1ª palavra em maiúsculas */
+  const desc = ts.filter(t => /[A-Za-zÀ-ú0-9]/.test(t)).join(' ');
+  if (!/[A-Za-zÀ-ú]{2}/.test(desc)) return null;
+  const v = parseValor(m[3].replace(/[/ ]/, ','));
+  return v > 0 ? { d: capitalizar(desc).slice(0, 40), q: m[1].replace(/[|lI]/g, '1') + ' ' + m[2].toLowerCase(), v, quem: [] } : null;
+}
 function itensComanda(t) {
   const itens = []; let total = null, sub = null, pagar = null;
+  const cupom = /consumidor\s*eletr|nfc-?e|danfe/i.test(t); /* cupom de supermercado: linha fora do formato não vira item (é lixo do OCR) */
   for (let l of String(t || '').replace(/ /g, ' ').split('\n')) {
+    const nf = linhaNFCe(l);
+    if (nf) { itens.push(nf); continue; }
     const vs = l.match(DINHEIRO); if (!vs) continue;
-    const nf = NFCE.exec(l);
-    if (nf && !/desconto|total|a pagar|tribut/i.test(l)) {
-      const v = parseValor(nf[4]);
-      if (v > 0) itens.push({ d: capitalizar(nf[1].replace(/\s+/g, ' ').trim()).slice(0, 40), q: nf[2] + ' ' + nf[3].toLowerCase(), v, quem: [] });
-      continue;
-    }
     const v = parseValor(vs[vs.length - 1]); /* o último valor da linha é o total do item */
-    if (/tribut|lei\s*12/i.test(l)) continue;
+    if (/desc[oa]nto|tribut|lei\s*12/i.test(l)) continue;
     if (/sub\s*-?\s*total/i.test(l)) { sub = v; continue; }
     if (/a\s*pagar/i.test(l)) { pagar = v; continue; }
     if (/total/i.test(l)) { total = v; continue; }
     if (/troco|pago|dinheiro|cart[aã]o|cr[eé]dito|d[eé]bito|\bpix\b|desconto|taxa|servi[cç]o|gorjeta|%|cpf|cnpj/i.test(l)) continue;
+    if (cupom) continue;
     let desc = l.replace(DINHEIRO, ' ').replace(/R\$/g, ' '), q = 1;
     const m = /^\s*(?:\d{3,}\s+)?(\d{1,2})\s*(?:x|un|und|unid)?\.?\s+(?=[A-Za-zÀ-ú])/i.exec(desc); /* código e quantidade no começo */
     if (m) { q = +m[1] || 1; desc = desc.slice(m[0].length); }
